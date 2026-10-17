@@ -1,3 +1,19 @@
+# Disclaimer
+
+I'm a long time developer but I admit I have no credit for coding this.  
+I can't play a game without my G13 and wanted a better experience with it.  
+So I tried a shot in the dark with Claude and this is just beyond my expectations.  
+
+--
+
+It's 100% claude-coded, I only provided ideas and did the testing.  
+I pushed claude.md and other confs on purpose.  
+It took a bit of time but this is a good V1.  
+Feel free to fork it and use it as a base to adapt it to your needs.  
+I may also read issues and consider requests even tho I won't be the one doing it obviously.  
+
+I have plans for a few updates, mostly QoL as every features logitech gaming software was providing is already there.
+
 # g13d — Logitech G13 on Linux, natively
 
 `g13d` is a user-session daemon, a CLI (`g13ctl`) and a GTK4 GUI (`g13-gui`) for the
