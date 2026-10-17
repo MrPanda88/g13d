@@ -1,0 +1,15 @@
+[Unit]
+Description=Logitech G13 daemon (g13d)
+Documentation=https://github.com/raphael-lang/g13d
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/g13d
+Restart=on-failure
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target

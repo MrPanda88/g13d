@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=G13 Configuration
+Name[fr]=Configuration G13
+Comment=Configure the Logitech G13 gameboard
+Comment[fr]=Configurer le Logitech G13
+Exec=g13-gui
+Icon=input-keyboard
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=logitech;g13;keypad;macro;

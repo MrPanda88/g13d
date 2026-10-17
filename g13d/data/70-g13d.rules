@@ -1,0 +1,13 @@
+# Logitech G13 (046d:c21c) — access for the logged-in user, for the g13d daemon.
+# The device itself is driven by the kernel module hid_lg_g15 (Linux >= 6.19).
+# Must sort before 73-seat-late.rules so that TAG+="uaccess" is honoured.
+
+# Keypad and thumbstick event nodes, LCD hidraw node.
+SUBSYSTEM=="input", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c21c", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c21c", TAG+="uaccess"
+
+# LED class attributes live in sysfs and cannot carry ACLs: make the two writable ones world-writable.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="g13:*", RUN+="/bin/sh -c 'chmod 0666 /sys%p/brightness /sys%p/multi_intensity 2>/dev/null; exit 0'"
+
+# Virtual keyboard/mouse output.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess"
