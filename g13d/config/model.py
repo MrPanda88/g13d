@@ -258,8 +258,11 @@ def _control_order(item):
 
 @dataclass
 class Settings:
-    """Global daemon settings (~/.config/g13d/config.toml)."""
-    default_profile: str = "Default"
+    """Global daemon settings (~/.config/g13d/config.toml).
+
+    default_profile: profile loaded when the daemon starts; empty = restore the last used one.
+    """
+    default_profile: str = ""
     lcd_enabled: bool = True
     log_level: str = "INFO"
 
@@ -267,7 +270,7 @@ class Settings:
     def from_toml(cls, d: dict) -> Settings:
         g = d.get("general", d) or {}
         return cls(
-            default_profile=str(g.get("default_profile", "Default")),
+            default_profile=str(g.get("default_profile", "")),
             lcd_enabled=bool(g.get("lcd_enabled", True)),
             log_level=str(g.get("log_level", "INFO")).upper(),
         )

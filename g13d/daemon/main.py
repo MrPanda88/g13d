@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import locale
 import logging
 import os
 import signal
@@ -305,7 +306,8 @@ class Daemon:
                                                "Macros": sorted(self.macros)})
 
     def _pick_profile(self, wanted: str | None) -> Profile:
-        for name in (wanted, self.settings.default_profile):
+        """Startup profile: the configured default if any, else the last used one, else the first."""
+        for name in (self.settings.default_profile, wanted):
             if name and name in self.profiles:
                 return self.profiles[name]
         return next(iter(self.profiles.values()))
@@ -325,6 +327,7 @@ class Daemon:
             "profile": self.profile.name,
             "mode": self.mode,
             "profiles": sorted(self.profiles),
+            "default_profile": self.settings.default_profile,
             "macros": sorted(self.macros),
             "active_macros": self.player.active,
             "recording": self.recording,
@@ -344,6 +347,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--version", action="version", version=f"g13d {__version__}")
     args = ap.parse_args(argv)
 
+    try:
+        locale.setlocale(locale.LC_ALL, "")   # dates on the LCD in the user's language
+    except locale.Error:
+        pass
     store = ConfigStore(root=args.config_dir and os.path.abspath(args.config_dir) or None)
     store.ensure_defaults()
     settings = store.load_settings()

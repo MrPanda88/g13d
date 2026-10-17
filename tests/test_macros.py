@@ -84,6 +84,21 @@ def test_while_held_loops_until_release():
     asyncio.run(run())
 
 
+def test_while_held_finishes_current_pass():
+    async def run():
+        vi = FakeInput()
+        m = Macro("m", [Step.tap("KEY_A"), Step.delay(40), Step.tap("KEY_C")], repeat="while_held")
+        p = _player(vi, {"m": m})
+        p.trigger("m", True)
+        await asyncio.sleep(0.005)
+        p.trigger("m", False)          # released early: the pass must still complete
+        await asyncio.sleep(0.08)
+        assert ("key", C, True) in vi.events
+        assert p.active == []
+        assert sum(1 for e in vi.events if e == ("key", A, True)) == 1
+    asyncio.run(run())
+
+
 def test_toggle_starts_and_stops():
     async def run():
         vi = FakeInput()

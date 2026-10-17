@@ -49,6 +49,14 @@ def test_tomlout_escapes():
     assert tomllib.loads(tomlout.dumps(data)) == data
 
 
+def test_settings_default_profile_roundtrip(tmp_path):
+    from g13d.config.model import Settings
+    store = ConfigStore(root=tmp_path)
+    assert store.load_settings().default_profile == ""
+    store.save_settings(Settings(default_profile="Gaming"))
+    assert store.load_settings().default_profile == "Gaming"
+
+
 def test_store_roundtrip(tmp_path):
     store = ConfigStore(root=tmp_path)
     store.ensure_defaults()

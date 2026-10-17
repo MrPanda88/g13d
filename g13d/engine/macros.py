@@ -19,6 +19,7 @@ class MacroPlayer:
         self._lookup = lookup
         self._on_change = on_change
         self._tasks: dict[str, asyncio.Task] = {}
+        self._finish: set[str] = set()   # while_held macros asked to stop after the current iteration
 
     # ---- public -------------------------------------------------------------
     @property
@@ -39,10 +40,11 @@ class MacroPlayer:
                 return
             self.start(macro)
         elif macro.repeat == "while_held" and running:
-            self.stop(name)
+            self._finish.add(name)   # let the current pass complete, then stop
 
     def start(self, macro: Macro) -> None:
         self.stop(macro.name)
+        self._finish.discard(macro.name)
         self._tasks[macro.name] = asyncio.get_running_loop().create_task(self._run(macro))
         log.info("macro %r started (%s)", macro.name, macro.repeat)
         self._notify()
@@ -87,7 +89,7 @@ class MacroPlayer:
                         self._vi.key(code, False)
                         held.discard(code)
                     await asyncio.sleep(0)  # keep the loop responsive even without delays
-                if macro.repeat == "once":
+                if macro.repeat == "once" or macro.name in self._finish:
                     break
                 await asyncio.sleep(max(macro.repeat_delay_ms, 1) / 1000)
         except asyncio.CancelledError:
@@ -102,6 +104,7 @@ class MacroPlayer:
                     pass
             if self._tasks.get(macro.name) is asyncio.current_task():
                 del self._tasks[macro.name]
+            self._finish.discard(macro.name)
             self._notify()
 
     @staticmethod
