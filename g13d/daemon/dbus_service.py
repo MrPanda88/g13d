@@ -52,6 +52,18 @@ class DaemonInterface(ServiceInterface):
     def Recording(self) -> "b":
         return self._d.recording
 
+    @dbus_property(access=PropertyAccess.READ)
+    def CurrentLcdPage(self) -> "s":
+        return self._d.screen.current.name
+
+    @dbus_property(access=PropertyAccess.READ)
+    def LcdPages(self) -> "as":
+        return self._d.screen.page_names
+
+    @dbus_property(access=PropertyAccess.READ)
+    def AvailableLcdPages(self) -> "as":
+        return self._d.screen.available_pages()
+
     # ---- methods ----------------------------------------------------------
     @method()
     def SetProfile(self, name: "s"):
@@ -79,7 +91,8 @@ class DaemonInterface(ServiceInterface):
 
     @method()
     def LcdText(self, text: "s", seconds: "d"):
-        self._d.screen.message(text, seconds)
+        """seconds > 0: transient overlay; seconds <= 0: fill the persistent 'text' page."""
+        self._d.lcd_text(text, seconds)
 
     @method()
     def GetStatus(self) -> "s":
@@ -105,6 +118,10 @@ class DaemonInterface(ServiceInterface):
     @signal()
     def RecordingChanged(self, recording: bool) -> "b":
         return recording
+
+    @signal()
+    def LcdPageChanged(self, name: str) -> "s":
+        return name
 
 
 async def start_bus(daemon: "Daemon") -> tuple[MessageBus, DaemonInterface]:

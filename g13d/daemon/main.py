@@ -42,7 +42,7 @@ class Daemon:
         self.vinput = VirtualInput()
         self.runner = ActionRunner(self.vinput, self)
         self.stick = Stick(self.runner, self.vinput, lambda name: self.profile.binding(self.mode, name))
-        self.screen = Screen(self)
+        self.screen = Screen(self, on_page_change=self._on_lcd_page_change)
         self.keypad: Keypad | None = None
         self.leds: Leds | None = None
         self.lcd: LcdDevice | None = None
@@ -74,6 +74,7 @@ class Daemon:
         log.info("shutting down")
         worker.cancel()
         await asyncio.gather(worker, return_exceptions=True)
+        self.screen.clear()
         self._disconnect()
         self.stick.stop()
         self.vinput.close()
@@ -244,6 +245,24 @@ class Daemon:
     def lcd_page(self, name: str) -> None:
         self.screen.show(name)
 
+    def lcd_text(self, text: str, seconds: float) -> None:
+        if seconds > 0:
+            self.screen.message(text, seconds)
+        else:
+            self.screen.set_text(text)
+
+    def _on_lcd_page_change(self, name: str) -> None:
+        if self.dbus:
+            self.dbus.LcdPageChanged(name)
+            self.dbus.emit_properties_changed({"CurrentLcdPage": name})
+
+    def cycle_profile(self, delta: int) -> None:
+        names = sorted(self.profiles)
+        if len(names) < 2:
+            return
+        i = names.index(self.profile.name) if self.profile.name in names else 0
+        self.set_profile(names[(i + delta) % len(names)])
+
     def run_macro(self, name: str, pressed: bool) -> None:
         if pressed:
             log.info("macro %r requested: macros arrive in milestone M3", name)
@@ -288,6 +307,8 @@ class Daemon:
             "profile": self.profile.name,
             "mode": self.mode,
             "profiles": sorted(self.profiles),
+            "lcd_page": self.screen.current.name,
+            "lcd_pages": self.screen.page_names,
             "config_dir": str(self.store.root),
             "keypad": paths.keypad_event if paths else None,
             "stick": paths.stick_event if paths else None,

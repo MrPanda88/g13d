@@ -40,3 +40,7 @@ The G13 forgets everything at power loss: reapply on every connect.
 160×43 monochrome, written through `/dev/hidrawN` as one 992-byte output report:
 `0x03`, 31 zero bytes, then 960 pixel bytes with `index = 32 + x + (y // 8) * 160`, `bit = y % 8`
 (bit 0 = topmost row of the 8-pixel band). Validated 2026-10-17 on firmware `bcdDevice 2.03`.
+
+The active area really is 160×43: rows 43..47 of the last band and nothing beyond column 159 light up
+(`scripts/lcd_bounds.py`, checked 2026-10-18). The backlit window is larger than the pixel matrix, which is
+why the frame never touches the bezel.

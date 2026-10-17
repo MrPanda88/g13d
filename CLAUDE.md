@@ -26,7 +26,7 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 ## Architecture (Python package `g13d`)
 - `g13d/hw/`: device discovery (sysfs + pyudev), evdev reader with exclusive grab, LEDs (sysfs), LCD (hidraw)
 - `g13d/engine/`: actions → uinput virtual device, thumbstick
-- `g13d/lcd/`: framebuffer encoding, pages, screen manager
+- `g13d/lcd/`: framebuffer encoding, pages, screen manager, MPRIS watcher
 - `g13d/daemon/`: asyncio main loop, D-Bus service `org.g13d`
 - `g13d/gui/`: GTK4/libadwaita app `g13-gui` (planned); `g13d/cli/`: `g13ctl`
 - `g13d/data/`: udev rule, systemd unit, desktop entry
@@ -34,15 +34,18 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 
 ## Progress
 - M0 hardware validation: done (2026-10-17)
-- M1 daemon + CLI + udev + systemd: code written, `g13d.service` running, hands-on key validation pending
-- Next: M2 LCD pages, M3 macros, M4 GUI, M5 polish, M6 replacing the libusb drivers (see `docs/PLAN.md`)
+- M1 daemon + CLI + udev + systemd: done, validated by hand (2026-10-17)
+- M2 LCD pages (status, clock, system, media/MPRIS, text, blank): done (2026-10-17)
+- Next: M3 macros, M4 GUI, M5 polish, M6 replacing the libusb drivers (see `docs/PLAN.md`)
 
 ## Useful commands
 - Tests: `make test` (pytest, no hardware needed)
 - After a code change: nothing to reinstall (editable install); restart with `systemctl --user restart g13d`
 - Logs: `journalctl --user -u g13d -f -o cat`
 - State: `g13ctl status`, `g13ctl diagnose`, `g13ctl watch`
-- Low-level probes: `scripts/probe.py`, `evcap.py`, `led_test.py`, `lcd_test.py`
+- Low-level probes: `scripts/probe.py`, `evcap.py`, `led_test.py`, `lcd_test.py`, `lcd_bounds.py`
+  (the active LCD area is exactly 160×43; the backlit window is physically larger than the pixel matrix)
+- LCD pages without hardware: `scripts/render_pages.py DIR`, then look at the PNGs
 
 ## Working rules
 - Python ≥ 3.12; dependencies: `evdev`, `dbus-next`, `Pillow`, `pyudev`, `psutil`, `PyGObject` (GUI). Full list in

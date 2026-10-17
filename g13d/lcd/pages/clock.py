@@ -11,7 +11,7 @@ from .base import Page
 
 class ClockPage(Page):
     name = "clock"
-    refresh_seconds = 1.0
+    title = "Clock"
 
     def render(self, draw, img, ctx) -> None:
         big = font(26)

@@ -18,6 +18,8 @@ def default_profile(name: str = "Default") -> Profile:
         "STICK_LEFT": Action.key("KEY_LEFT"),
         "STICK_RIGHT": Action.key("KEY_RIGHT"),
         "STICK_PRESS": Action.key("KEY_ENTER"),
+        "STICK_BTN_LEFT": Action.key("KEY_ESC"),
+        "STICK_BTN_DOWN": Action.key("KEY_BACKSPACE"),
         "LCD_MENU": Action.lcd_page("next"),
     })
     # M2 / M3 start as copies so switching modes is not a surprise; the user edits them freely.
@@ -25,6 +27,6 @@ def default_profile(name: str = "Default") -> Profile:
         name=name,
         backlight=(51, 153, 255),
         stick=StickConfig(mode="keys"),
-        lcd_pages=["status", "clock", "system"],
+        lcd_pages=["status", "clock", "system", "media"],
         modes={1: dict(m1), 2: dict(m1), 3: dict(m1)},
     )

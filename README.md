@@ -10,7 +10,7 @@ Features (see `docs/PLAN.md` for the roadmap):
 - 22 G-keys, 4 LCD buttons, thumbstick (arrow keys / pointer / scroll / raw gamepad)
 - M1 / M2 / M3 modes with synced LEDs, per-profile RGB backlight
 - Profiles in plain TOML files
-- 160×43 LCD: status, clock, system pages, text messages from scripts over D-Bus
+- 160×43 LCD: status, clock, system (CPU/RAM/net), media (MPRIS now-playing with transport buttons), free text and blank pages; messages from scripts over D-Bus
 - Macros with GUI recording (milestone M3/M4)
 - `systemd --user` service, udev rule, D-Bus API `org.g13d`
 
@@ -57,7 +57,7 @@ mode = "keys"          # keys | mouse | scroll | passthrough
 deadzone = 0.25
 
 [lcd]
-pages = ["status", "clock", "system"]
+pages = ["status", "clock", "system", "media"]   # also: text, blank
 
 [m1]
 G1 = "KEY_1"                                 # single key (evdev name)
@@ -70,22 +70,25 @@ LCD_MENU = { lcd_page = "next" }
 STICK_UP = "KEY_UP"
 ```
 
-Then `g13ctl reload`. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
+Then `g13ctl reload`. The round button left of the LCD keys cycles pages; on the status page the
+four LCD keys select M1/M2/M3 and the next profile, on the media page they drive the player. Bind
+`LCD1`..`LCD4` in a profile to override that. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
 to physical positions, your keyboard layout is applied by the compositor as usual.
 
 ## CLI
 
 ```
 g13ctl status | profiles | profile NAME | mode 1..3 | backlight R G B
-g13ctl lcd-page NAME|next|prev | lcd-text "message" [-s 5] | reload | watch | diagnose
+g13ctl lcd-page NAME|next|prev | lcd-text "message" [-s 5]  (-s 0: persistent text page) | reload | watch | diagnose
 ```
 
 ## D-Bus
 
 Service `org.g13d`, object `/org/g13d/Daemon`, interface `org.g13d.Daemon`: properties
-`Connected`, `CurrentProfile`, `CurrentMode`, `Profiles`, `Recording`; methods `SetProfile`,
+`Connected`, `CurrentProfile`, `CurrentMode`, `Profiles`, `Recording`, `CurrentLcdPage`, `LcdPages`,
+`AvailableLcdPages`; methods `SetProfile`,
 `SetMode`, `ReloadConfig`, `SetBacklight`, `LcdPage`, `LcdText`, `GetStatus`; signals
-`ProfileChanged`, `ModeChanged`, `DeviceChanged`, `KeyEvent`, `RecordingChanged`.
+`ProfileChanged`, `ModeChanged`, `DeviceChanged`, `KeyEvent`, `RecordingChanged`, `LcdPageChanged`.
 
 ## Hardware notes
 

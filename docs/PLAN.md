@@ -1,6 +1,6 @@
 # Plan — g13d: native Linux driver for the Logitech G13
 
-Status: **approved on 2026-10-17, M1 in progress.**
+Status: **approved on 2026-10-17. M1 and M2 delivered on 2026-10-17, M3 (macros) in progress.**
 
 ## 0. Established facts (validated on hardware on 2026-10-17)
 
@@ -119,8 +119,8 @@ g13d/
 | # | Content | Verifiable result |
 |---|---|---|
 | M0 | Hardware validation, probe scripts | **done** |
-| M1 | Minimal daemon: discovery, grab, uinput, TOML profile, M modes + LEDs, colour, udev, systemd unit, `g13ctl` | code written, hands-on validation pending |
-| M2 | LCD: framebuffer, status/clock/system/media (MPRIS)/text/blank pages, per-page LCD keys, `LcdText` | a live, useful LCD |
+| M1 | Minimal daemon: discovery, grab, uinput, TOML profile, M modes + LEDs, colour, udev, systemd unit, `g13ctl` | **done** — validated by hand on 2026-10-17 |
+| M2 | LCD: framebuffer, status/clock/system/media (MPRIS)/text/blank pages, per-page LCD keys, `LcdText` | **done** on 2026-10-17 |
 | M3 | Macros: TOML format, playback (once / while_held / toggle), safe release, `MacroRecorder` (pure logic for the GUI), `RunMacro`/`StopMacros`/`SetRecording` | the example macro plays |
 | M4 | GTK4/Adw GUI: profiles, keys (learning), stick, LCD & colour, macros + recording | everything configurable with the mouse, LCD preview |
 | M5 | Hotplug/suspend, MPRIS, docs, `make install` | clean, reproducible installation |
