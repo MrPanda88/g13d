@@ -1,6 +1,6 @@
 [Unit]
 Description=Logitech G13 daemon (g13d)
-Documentation=https://github.com/raphael-lang/g13d
+Documentation=https://github.com/MrPanda88/g13d
 PartOf=graphical-session.target
 After=graphical-session.target
 

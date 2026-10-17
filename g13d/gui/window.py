@@ -384,5 +384,5 @@ class MainWindow(Adw.ApplicationWindow):
 def about_dialog(parent: Gtk.Window) -> None:
     Adw.AboutDialog(application_name="G13 Configuration", application_icon="input-keyboard", version=__version__,
                     developer_name="g13d contributors", license_type=Gtk.License.MIT_X11,
-                    website="https://github.com/raphael-lang/g13d",
+                    website="https://github.com/MrPanda88/g13d",
                     comments="Native Linux support for the Logitech G13 gameboard.").present(parent)

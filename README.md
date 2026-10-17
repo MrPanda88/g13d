@@ -33,7 +33,7 @@ packages are missing.
 ## Install (single user)
 
 ```sh
-git clone https://github.com/raphael-lang/g13d && cd g13d
+git clone https://github.com/MrPanda88/g13d && cd g13d
 make install-udev     # asks for sudo: /etc/udev/rules.d/70-g13d.rules
 make install          # pip install --user -e . ; systemd user unit
 make enable           # start now and at every login
