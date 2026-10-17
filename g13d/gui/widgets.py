@@ -1,0 +1,53 @@
+"""Small reusable widgets."""
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk  # noqa: E402
+
+
+class SliderRow(Adw.ActionRow):
+    """A row with a slider (min/max marks) and an editable number sharing one adjustment."""
+
+    def __init__(self, title: str, subtitle: str, lo: float, hi: float, step: float,
+                 on_change: Callable[[float], None], digits: int = 0, unit: str = ""):
+        super().__init__(title=title, subtitle=subtitle)
+        self.set_title_lines(1)
+        self.set_subtitle_lines(2)
+        self._on_change = on_change
+        self._adj = Gtk.Adjustment(lower=lo, upper=hi, step_increment=step, page_increment=step * 5, value=lo)
+        # fixed length so every slider of a group lines up whatever its subtitle says
+        scale = Gtk.Scale(orientation=Gtk.Orientation.HORIZONTAL, adjustment=self._adj, hexpand=False,
+                          draw_value=False, width_request=320, valign=Gtk.Align.CENTER)
+        fmt = f"{{:.{digits}f}}{unit}"
+        scale.add_mark(lo, Gtk.PositionType.BOTTOM, fmt.format(lo))
+        scale.add_mark(hi, Gtk.PositionType.BOTTOM, fmt.format(hi))
+        spin = Gtk.SpinButton(adjustment=self._adj, digits=digits, valign=Gtk.Align.CENTER, width_chars=6)
+        self.add_suffix(scale)
+        self.add_suffix(spin)
+        self._adj.connect("value-changed", lambda a: self._on_change(a.get_value()))
+
+    @property
+    def value(self) -> float:
+        return self._adj.get_value()
+
+    @value.setter
+    def value(self, v: float) -> None:
+        self._adj.set_value(v)
+
+
+class WidePage(Gtk.ScrolledWindow):
+    """Like Adw.PreferencesPage, but the content may grow up to `max_width` pixels."""
+
+    def __init__(self, max_width: int = 1100):
+        super().__init__(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True, hexpand=True)
+        self._box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24, margin_top=24, margin_bottom=24,
+                            margin_start=18, margin_end=18)
+        self.set_child(Adw.Clamp(maximum_size=max_width, tightening_threshold=max_width - 200, child=self._box))
+
+    def add(self, widget: Gtk.Widget) -> None:
+        self._box.append(widget)

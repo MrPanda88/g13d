@@ -28,7 +28,7 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - `g13d/engine/`: actions → uinput virtual device, thumbstick, macro player and recorder
 - `g13d/lcd/`: framebuffer encoding, pages, screen manager, MPRIS watcher
 - `g13d/daemon/`: asyncio main loop, D-Bus service `org.g13d`
-- `g13d/gui/`: GTK4/libadwaita app `g13-gui` (planned); `g13d/cli/`: `g13ctl`
+- `g13d/gui/`: GTK4/libadwaita app `g13-gui`; `g13d/cli/`: `g13ctl`
 - `g13d/data/`: udev rule, systemd unit, desktop entry
 - User config: `~/.config/g13d/config.toml`, `profiles/*.toml`, `macros/*.toml`
 
@@ -37,8 +37,8 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - M1 daemon + CLI + udev + systemd: done, validated by hand (2026-10-17)
 - M2 LCD pages (status, clock, system, media/MPRIS, text, blank): done (2026-10-17)
 - M3 macros (model, player, recorder logic, D-Bus/CLI): done (2026-10-17)
-- Next: M4 GTK4/Adw GUI (keys, actions, macros + recording, LCD, colour), M5 polish, M6 replacing the libusb drivers
-- Idea kept for M4: the GUI listens to `KeyEvent("MR")` to start/stop a recording and calls `SetRecording` (MR LED)
+- M4 GTK4/Adw GUI (`g13d/gui/`): v1 + fixes after testing (2026-10-17)
+- Next: M5 polish (hotplug/suspend, packaging), M6 replacing the libusb drivers
 
 ## Useful commands
 - Tests: `make test` (pytest, no hardware needed)
@@ -48,8 +48,14 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - Low-level probes: `scripts/probe.py`, `evcap.py`, `led_test.py`, `lcd_test.py`, `lcd_bounds.py`
   (the active LCD area is exactly 160×43; the backlit window is physically larger than the pixel matrix)
 - LCD pages without hardware: `scripts/render_pages.py DIR`, then look at the PNGs
+- GUI screenshots without watching: `g13-gui --tab keys|stick|lcd|macros [--mode 2] [--edit G1] --screenshot out.png`
+  (the window shows for 2 s). Layout-aware labels only appear once the window has had focus (Wayland keymap)
 
 ## Working rules
+- **Consistent UI**: a given kind of control behaves the same everywhere. Text fields = applied on Enter, ✓ button
+  or focus loss (`MacrosPage._text_row`); reorderable lists = arrows + drag-and-drop; deletions = `Adw.AlertDialog`
+  confirmation; page width = `WidePage` (1100 px); key labels = `keymap.key_label`
+- `use_markup=False` on every Adw.*Row that shows a key name (`&` and `<` break Pango markup)
 - Python ≥ 3.12; dependencies: `evdev`, `dbus-next`, `Pillow`, `pyudev`, `psutil`, `PyGObject` (GUI). Full list in
   `pyproject.toml` and `README.md`
 - No libusb, never detach the kernel driver: if the G13 is not under `/sys/bus/hid/drivers/lg-g15/`, another

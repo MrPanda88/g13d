@@ -22,6 +22,8 @@ install:
 	$(PY) -m pip install $(PIP_FLAGS) -e .
 	install -Dm644 g13d/data/g13d.service $(UNIT_DIR)/g13d.service
 	install -Dm644 g13d/data/org.g13d.Gui.desktop $(HOME)/.local/share/applications/org.g13d.Gui.desktop
+	sed -i 's|^Exec=.*|Exec=$(HOME)/.local/bin/g13-gui|' $(HOME)/.local/share/applications/org.g13d.Gui.desktop
+	-update-desktop-database $(HOME)/.local/share/applications 2>/dev/null
 	systemctl --user daemon-reload
 
 enable:

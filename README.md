@@ -1,6 +1,6 @@
 # g13d — Logitech G13 on Linux, natively
 
-`g13d` is a user-session daemon, a CLI (`g13ctl`) and a GTK4 GUI (`g13-gui`, coming) for the
+`g13d` is a user-session daemon, a CLI (`g13ctl`) and a GTK4 GUI (`g13-gui`) for the
 Logitech G13 gameboard. It builds on the **kernel driver** (`hid_lg_g15`, G13 support since
 Linux 6.19) instead of grabbing the USB device with libusb, so it coexists with the rest of the
 system and works the same on Wayland and X11.
@@ -11,7 +11,7 @@ Features (see `docs/PLAN.md` for the roadmap):
 - M1 / M2 / M3 modes with synced LEDs, per-profile RGB backlight
 - Profiles in plain TOML files
 - 160×43 LCD: status, clock, system (CPU/RAM/net), media (MPRIS now-playing with transport buttons), free text and blank pages; messages from scripts over D-Bus
-- Macros: press/release/tap/delay steps, play once / while held / toggle, GUI recorder (M4)
+- Macros: press/release/tap/delay steps, play once / while held / toggle, recorder in the GUI
 - `systemd --user` service, udev rule, D-Bus API `org.g13d`
 
 ## Requirements
@@ -25,7 +25,7 @@ Features (see `docs/PLAN.md` for the roadmap):
 | [Pillow](https://pypi.org/project/Pillow/) | LCD rendering | `python3-pillow` | `python3-pil` | `python-pillow` |
 | [pyudev](https://pypi.org/project/pyudev/) | hotplug | `python3-pyudev` | `python3-pyudev` | `python-pyudev` |
 | [psutil](https://pypi.org/project/psutil/) | system LCD page | `python3-psutil` | `python3-psutil` | `python-psutil` |
-| PyGObject + GTK4 + libadwaita (GUI only) | `g13-gui` | `python3-gobject gtk4 libadwaita` | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1` | `python-gobject gtk4 libadwaita` |
+| PyGObject + GTK4 ≥ 4.12 + libadwaita ≥ 1.7 (GUI only) | `g13-gui` | `python3-gobject gtk4 libadwaita` | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1` | `python-gobject gtk4 libadwaita` |
 
 All Python dependencies are declared in `pyproject.toml`; `pip` resolves them if the distro
 packages are missing.
@@ -70,7 +70,10 @@ LCD_MENU = { lcd_page = "next" }
 STICK_UP = "KEY_UP"
 ```
 
-Then `g13ctl reload`. The round button left of the LCD keys cycles pages; on the status page the
+Then `g13ctl reload`. `~/.config/g13d/config.toml` holds `default_profile`: the profile loaded when
+the daemon starts (empty = restore the last one used; the star in the GUI sets it).
+
+The round button left of the LCD keys cycles pages; on the status page the
 four LCD keys select M1/M2/M3 and the next profile, on the media page they drive the player. Bind
 `LCD1`..`LCD4` in a profile to override that. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
 to physical positions, your keyboard layout is applied by the compositor as usual.
@@ -100,8 +103,28 @@ steps = [
 `q` on AZERTY, so `Ctrl+KEY_A` is Ctrl+Q there (and quits many apps). When editing TOML by hand on
 a non-QWERTY layout, think in QWERTY positions; the GUI records keys by position so you never have to.
 
-Keys still held when a macro ends or is stopped are released automatically. `g13ctl macro-run NAME`
-plays one immediately, `g13ctl macro-stop` stops everything.
+Steps may also use mouse buttons (`BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`, …). `while_held` always
+finishes the pass that is playing before it stops, so a macro that types a word never stops
+half-way. Keys still held when a macro ends or is stopped are released automatically.
+`g13ctl macro-run NAME` plays one immediately, `g13ctl macro-stop` stops everything.
+
+## GUI
+
+`g13-gui` (also "G13 Configuration" in the app grid) is a GTK4/libadwaita app:
+
+- **Profiles**: create, duplicate, rename, delete; click one to activate it on the device; the star
+  marks the profile loaded at startup. The GUI follows profile and mode switches made on the G13.
+- **Keys**: a picture of the G13; pick M1/M2/M3, click a key, choose what it does. Keys are learned by
+  pressing them (Esc included), so labels follow your real layout. Keys light up when pressed on the device.
+- **Stick**: keys / pointer / scroll / passthrough, dead zone, speeds.
+- **LCD & Light**: backlight colour (live), LCD pages on/off and order (drag or arrows), preview
+  rendered with the daemon's code and your backlight colour.
+- **Macros**: create, record like Logitech Gaming Software (press Record, type, press Record again
+  or MR on the G13; recording replaces the steps), add key or mouse steps by hand, edit delays,
+  drag to reorder, play on the device.
+
+Every change is saved immediately and the daemon reloads it. Profiles are plain TOML, so the GUI
+and a text editor can be mixed freely.
 
 ## CLI
 
