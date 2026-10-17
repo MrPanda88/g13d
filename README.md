@@ -11,7 +11,7 @@ Features (see `docs/PLAN.md` for the roadmap):
 - M1 / M2 / M3 modes with synced LEDs, per-profile RGB backlight
 - Profiles in plain TOML files
 - 160×43 LCD: status, clock, system (CPU/RAM/net), media (MPRIS now-playing with transport buttons), free text and blank pages; messages from scripts over D-Bus
-- Macros with GUI recording (milestone M3/M4)
+- Macros: press/release/tap/delay steps, play once / while held / toggle, GUI recorder (M4)
 - `systemd --user` service, udev rule, D-Bus API `org.g13d`
 
 ## Requirements
@@ -75,10 +75,38 @@ four LCD keys select M1/M2/M3 and the next profile, on the media page they drive
 `LCD1`..`LCD4` in a profile to override that. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
 to physical positions, your keyboard layout is applied by the compositor as usual.
 
+## Macros
+
+One TOML file per macro in `~/.config/g13d/macros/`, bound with `{ macro = "name" }`:
+
+```toml
+name = "example"
+description = "Select the current line and copy it"
+repeat = "once"            # once | while_held | toggle
+repeat_delay = 0           # ms between loops
+steps = [
+  { tap = "KEY_HOME" },
+  { press = "KEY_LEFTSHIFT" },
+  { tap = "KEY_END" },
+  { release = "KEY_LEFTSHIFT" },
+  { delay = 30 },          # milliseconds
+  { press = "KEY_LEFTCTRL" },
+  { tap = "KEY_INSERT" },
+  { release = "KEY_LEFTCTRL" },
+]
+```
+
+**Key names are physical positions.** `KEY_A` is the key left of `S`: it types `a` on QWERTY but
+`q` on AZERTY, so `Ctrl+KEY_A` is Ctrl+Q there (and quits many apps). When editing TOML by hand on
+a non-QWERTY layout, think in QWERTY positions; the GUI records keys by position so you never have to.
+
+Keys still held when a macro ends or is stopped are released automatically. `g13ctl macro-run NAME`
+plays one immediately, `g13ctl macro-stop` stops everything.
+
 ## CLI
 
 ```
-g13ctl status | profiles | profile NAME | mode 1..3 | backlight R G B
+g13ctl status | profiles | profile NAME | mode 1..3 | backlight R G B | macros | macro-run NAME | macro-stop
 g13ctl lcd-page NAME|next|prev | lcd-text "message" [-s 5]  (-s 0: persistent text page) | reload | watch | diagnose
 ```
 
@@ -86,8 +114,9 @@ g13ctl lcd-page NAME|next|prev | lcd-text "message" [-s 5]  (-s 0: persistent te
 
 Service `org.g13d`, object `/org/g13d/Daemon`, interface `org.g13d.Daemon`: properties
 `Connected`, `CurrentProfile`, `CurrentMode`, `Profiles`, `Recording`, `CurrentLcdPage`, `LcdPages`,
-`AvailableLcdPages`; methods `SetProfile`,
-`SetMode`, `ReloadConfig`, `SetBacklight`, `LcdPage`, `LcdText`, `GetStatus`; signals
+`AvailableLcdPages`, `Macros`, `ActiveMacros`; methods `SetProfile`,
+`SetMode`, `ReloadConfig`, `SetBacklight`, `LcdPage`, `LcdText`, `RunMacro`, `StopMacros`, `SetRecording`,
+`GetStatus`; signals
 `ProfileChanged`, `ModeChanged`, `DeviceChanged`, `KeyEvent`, `RecordingChanged`, `LcdPageChanged`.
 
 ## Hardware notes

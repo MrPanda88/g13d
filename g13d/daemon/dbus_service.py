@@ -53,6 +53,14 @@ class DaemonInterface(ServiceInterface):
         return self._d.recording
 
     @dbus_property(access=PropertyAccess.READ)
+    def Macros(self) -> "as":
+        return sorted(self._d.macros)
+
+    @dbus_property(access=PropertyAccess.READ)
+    def ActiveMacros(self) -> "as":
+        return self._d.player.active
+
+    @dbus_property(access=PropertyAccess.READ)
     def CurrentLcdPage(self) -> "s":
         return self._d.screen.current.name
 
@@ -93,6 +101,22 @@ class DaemonInterface(ServiceInterface):
     def LcdText(self, text: "s", seconds: "d"):
         """seconds > 0: transient overlay; seconds <= 0: fill the persistent 'text' page."""
         self._d.lcd_text(text, seconds)
+
+    @method()
+    def RunMacro(self, name: "s"):
+        macro = self._d.macros.get(name)
+        if macro is None:
+            raise DBusError("org.g13d.Error.NoSuchMacro", f"no macro named {name!r}")
+        self._d.player.start(macro)
+
+    @method()
+    def StopMacros(self):
+        self._d.player.stop_all()
+
+    @method()
+    def SetRecording(self, recording: "b"):
+        """Lights the MR LED and shows MR on the LCD while the GUI records a macro."""
+        self._d.set_recording(recording)
 
     @method()
     def GetStatus(self) -> "s":

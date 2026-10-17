@@ -33,6 +33,8 @@ async def cmd_status(args) -> None:
     print(f"profile: {data['profile']}   mode: M{data['mode']}")
     print(f"profiles: {', '.join(data['profiles'])}")
     print(f"lcd: {data['lcd_page']}  (pages: {', '.join(data['lcd_pages'])})")
+    active = f"  running: {', '.join(data['active_macros'])}" if data['active_macros'] else ""
+    print(f"macros: {', '.join(data['macros']) or '-'}{active}")
     print(f"config: {data['config_dir']}")
 
 
@@ -68,6 +70,23 @@ async def cmd_lcd_text(args) -> None:
     await i.call_lcd_text(" ".join(args.text), float(args.seconds))
 
 
+async def cmd_macros(args) -> None:
+    _, i = await _iface()
+    active = set(await i.get_active_macros())
+    for m in await i.get_macros():
+        print(("* " if m in active else "  ") + m)
+
+
+async def cmd_macro_run(args) -> None:
+    _, i = await _iface()
+    await i.call_run_macro(args.name)
+
+
+async def cmd_macro_stop(args) -> None:
+    _, i = await _iface()
+    await i.call_stop_macros()
+
+
 async def cmd_reload(args) -> None:
     _, i = await _iface()
     await i.call_reload_config()
@@ -80,6 +99,7 @@ async def cmd_watch(args) -> None:
     i.on_profile_changed(lambda p: print(f"profile {p}", flush=True))
     i.on_device_changed(lambda c: print(f"device {'connected' if c else 'disconnected'}", flush=True))
     i.on_lcd_page_changed(lambda n: print(f"lcd {n}", flush=True))
+    i.on_recording_changed(lambda r: print(f"recording {'on' if r else 'off'}", flush=True))
     print("watching g13d events, Ctrl-C to stop", file=sys.stderr)
     await asyncio.Event().wait()
 
@@ -109,6 +129,9 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fn=cmd_backlight)
     p = sub.add_parser("lcd-page", help="show an LCD page (name, next, prev)"); p.add_argument("name"); p.set_defaults(fn=cmd_lcd_page)
     p = sub.add_parser("lcd-text", help="show a message on the LCD"); p.add_argument("text", nargs="+"); p.add_argument("-s", "--seconds", type=float, default=3.0, help="overlay duration; 0 = persistent text page"); p.set_defaults(fn=cmd_lcd_text)
+    sub.add_parser("macros", help="list macros (* = running)").set_defaults(fn=cmd_macros)
+    p = sub.add_parser("macro-run", help="play a macro now"); p.add_argument("name"); p.set_defaults(fn=cmd_macro_run)
+    sub.add_parser("macro-stop", help="stop all running macros").set_defaults(fn=cmd_macro_stop)
     sub.add_parser("reload", help="reload configuration files").set_defaults(fn=cmd_reload)
     sub.add_parser("watch", help="print key events and state changes").set_defaults(fn=cmd_watch)
     sub.add_parser("diagnose", help="check the kernel side without the daemon").set_defaults(fn=cmd_diagnose)

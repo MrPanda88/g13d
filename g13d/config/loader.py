@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import tomlout
 from .defaults import default_profile
+from .macro import EXAMPLE_MACRO_TOML, Macro
 from .model import ConfigError, Profile, Settings
 
 log = logging.getLogger(__name__)
@@ -69,6 +70,8 @@ class ConfigStore:
         if not any(self.profiles_dir.glob("*.toml")):
             self.save_profile(default_profile())
             log.info("created default profile in %s", self.profiles_dir)
+        if not any(self.macros_dir.glob("*.toml")):
+            _atomic_write(self.macros_dir / "example.toml", EXAMPLE_MACRO_TOML)
         if not (self.root / "config.toml").exists():
             self.save_settings(Settings())
 
@@ -98,6 +101,37 @@ class ConfigStore:
 
     def delete_profile(self, name: str) -> None:
         path = self.profile_path(name)
+        if path.exists():
+            path.unlink()
+
+
+    # ---- macros -------------------------------------------------------
+    def load_macros(self) -> dict[str, Macro]:
+        macros: dict[str, Macro] = {}
+        for p in sorted(self.macros_dir.glob("*.toml")):
+            try:
+                with p.open("rb") as f:
+                    m = Macro.from_toml(tomllib.load(f), fallback_name=p.stem)
+            except (tomllib.TOMLDecodeError, ConfigError, OSError) as e:
+                log.error("skipping macro %s: %s", p.name, e)
+                continue
+            if m.name in macros:
+                log.warning("duplicate macro name %r in %s, keeping the first one", m.name, p.name)
+                continue
+            macros[m.name] = m
+        return macros
+
+    def macro_path(self, name: str) -> Path:
+        return self.macros_dir / f"{safe_stem(name)}.toml"
+
+    def save_macro(self, macro: Macro) -> Path:
+        self.macros_dir.mkdir(parents=True, exist_ok=True)
+        path = self.macro_path(macro.name)
+        _atomic_write(path, tomlout.dumps(macro.to_toml()))
+        return path
+
+    def delete_macro(self, name: str) -> None:
+        path = self.macro_path(name)
         if path.exists():
             path.unlink()
 

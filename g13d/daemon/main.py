@@ -15,6 +15,7 @@ from g13d.config.defaults import default_profile
 from g13d.config.loader import ConfigStore
 from g13d.config.model import MODES, Action, Profile
 from g13d.engine.actions import ActionRunner
+from g13d.engine.macros import MacroPlayer
 from g13d.engine.stick import Stick
 from g13d.engine.uinput_out import VirtualInput
 from g13d.hw.discover import G13Paths, diagnose, find_g13
@@ -33,6 +34,7 @@ class Daemon:
         self.store = store
         self.settings = store.load_settings()
         self.profiles: dict[str, Profile] = store.load_profiles() or {"Default": default_profile()}
+        self.macros = store.load_macros()
         state = store.load_state()
         self.profile: Profile = self._pick_profile(state.get("profile"))
         self.mode: int = state.get("mode", 1) if state.get("mode") in MODES else 1
@@ -41,6 +43,7 @@ class Daemon:
 
         self.vinput = VirtualInput()
         self.runner = ActionRunner(self.vinput, self)
+        self.player = MacroPlayer(self.vinput, lambda n: self.macros.get(n), self._on_macros_changed)
         self.stick = Stick(self.runner, self.vinput, lambda name: self.profile.binding(self.mode, name))
         self.screen = Screen(self, on_page_change=self._on_lcd_page_change)
         self.keypad: Keypad | None = None
@@ -172,6 +175,7 @@ class Daemon:
             self.runner.release(action)
         self.active.clear()
         self.stick.reset()
+        self.player.stop_all()
         self.runner.release_all()
 
     # ---- input callbacks --------------------------------------------------
@@ -183,9 +187,7 @@ class Daemon:
                 self.set_mode(int(name[1]))
             return
         if name == "MR":
-            if pressed:
-                log.info("MR pressed: on-device macro recording is not available yet")
-            return
+            return  # the GUI listens to KeyEvent("MR") to start/stop a recording
         if name == "LIGHT":
             return  # the hardware toggles its own backlight
         if pressed:
@@ -264,8 +266,22 @@ class Daemon:
         self.set_profile(names[(i + delta) % len(names)])
 
     def run_macro(self, name: str, pressed: bool) -> None:
-        if pressed:
-            log.info("macro %r requested: macros arrive in milestone M3", name)
+        self.player.trigger(name, pressed)
+
+    def _on_macros_changed(self) -> None:
+        if self.dbus:
+            self.dbus.emit_properties_changed({"ActiveMacros": self.player.active})
+
+    def set_recording(self, recording: bool) -> None:
+        if recording == self.recording:
+            return
+        self.recording = recording
+        if self.leds:
+            self.leds.set_record(recording)
+        self.screen.refresh(force=True)
+        if self.dbus:
+            self.dbus.RecordingChanged(recording)
+            self.dbus.emit_properties_changed({"Recording": recording})
 
     def set_backlight(self, rgb: tuple[int, int, int]) -> None:
         if self.leds:
@@ -279,12 +295,14 @@ class Daemon:
             log.error("no valid profile found in %s, keeping the current ones", self.store.profiles_dir)
             return
         self.profiles = profiles
+        self.macros = self.store.load_macros()
         current = profiles.get(self.profile.name) or self._pick_profile(None)
         self._activate(current)
         self._save_state()
-        log.info("configuration reloaded (%d profiles), active %r", len(profiles), current.name)
+        log.info("configuration reloaded (%d profiles, %d macros), active %r", len(profiles), len(self.macros), current.name)
         if self.dbus:
-            self.dbus.emit_properties_changed({"Profiles": sorted(profiles), "CurrentProfile": current.name})
+            self.dbus.emit_properties_changed({"Profiles": sorted(profiles), "CurrentProfile": current.name,
+                                               "Macros": sorted(self.macros)})
 
     def _pick_profile(self, wanted: str | None) -> Profile:
         for name in (wanted, self.settings.default_profile):
@@ -307,6 +325,9 @@ class Daemon:
             "profile": self.profile.name,
             "mode": self.mode,
             "profiles": sorted(self.profiles),
+            "macros": sorted(self.macros),
+            "active_macros": self.player.active,
+            "recording": self.recording,
             "lcd_page": self.screen.current.name,
             "lcd_pages": self.screen.page_names,
             "config_dir": str(self.store.root),

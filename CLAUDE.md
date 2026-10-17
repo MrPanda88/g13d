@@ -25,18 +25,20 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 
 ## Architecture (Python package `g13d`)
 - `g13d/hw/`: device discovery (sysfs + pyudev), evdev reader with exclusive grab, LEDs (sysfs), LCD (hidraw)
-- `g13d/engine/`: actions → uinput virtual device, thumbstick
+- `g13d/engine/`: actions → uinput virtual device, thumbstick, macro player and recorder
 - `g13d/lcd/`: framebuffer encoding, pages, screen manager, MPRIS watcher
 - `g13d/daemon/`: asyncio main loop, D-Bus service `org.g13d`
 - `g13d/gui/`: GTK4/libadwaita app `g13-gui` (planned); `g13d/cli/`: `g13ctl`
 - `g13d/data/`: udev rule, systemd unit, desktop entry
-- User config: `~/.config/g13d/config.toml`, `profiles/*.toml`
+- User config: `~/.config/g13d/config.toml`, `profiles/*.toml`, `macros/*.toml`
 
 ## Progress
 - M0 hardware validation: done (2026-10-17)
 - M1 daemon + CLI + udev + systemd: done, validated by hand (2026-10-17)
 - M2 LCD pages (status, clock, system, media/MPRIS, text, blank): done (2026-10-17)
-- Next: M3 macros, M4 GUI, M5 polish, M6 replacing the libusb drivers (see `docs/PLAN.md`)
+- M3 macros (model, player, recorder logic, D-Bus/CLI): done (2026-10-17)
+- Next: M4 GTK4/Adw GUI (keys, actions, macros + recording, LCD, colour), M5 polish, M6 replacing the libusb drivers
+- Idea kept for M4: the GUI listens to `KeyEvent("MR")` to start/stop a recording and calls `SetRecording` (MR LED)
 
 ## Useful commands
 - Tests: `make test` (pytest, no hardware needed)
@@ -54,5 +56,7 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   userspace (libusb) driver holds the interface
 - No import of other drivers' configurations; macro recording happens in the GUI, no `input` group needed
 - Always release the evdev grab on exit (otherwise the keys stay dead)
+- **Layout trap**: `KEY_*` names are QWERTY positions (`KEY_A` types `q` on AZERTY). Shipped examples and defaults
+  must only use layout-independent keys (Home, End, Insert, F1…, Ctrl, Shift)
 - `/usr/bin/g13` is GnuPG's `g13` program, unrelated to this project
 - Small commits, messages in English

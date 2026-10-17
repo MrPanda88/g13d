@@ -28,6 +28,8 @@ def _scalar(v) -> str:
     if isinstance(v, str):
         return _str(v)
     if isinstance(v, (list, tuple)):
+        if any(isinstance(x, dict) for x in v):
+            return "[\n" + "".join(f"  {_scalar(x)},\n" for x in v) + "]"
         return "[" + ", ".join(_scalar(x) for x in v) + "]"
     if isinstance(v, dict):
         return "{ " + ", ".join(f"{_key(k)} = {_scalar(x)}" for k, x in v.items()) + " }"
