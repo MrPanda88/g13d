@@ -1,6 +1,6 @@
 # Plan — g13d: native Linux driver for the Logitech G13
 
-Status: **approved on 2026-10-17. M1 to M4 delivered on 2026-10-17 (M4 under test), M5 next.**
+Status: **approved on 2026-10-17. M1 to M6 delivered and validated on hardware on 2026-10-17.**
 
 ## 0. Established facts (validated on hardware on 2026-10-17)
 
@@ -122,9 +122,9 @@ g13d/
 | M1 | Minimal daemon: discovery, grab, uinput, TOML profile, M modes + LEDs, colour, udev, systemd unit, `g13ctl` | **done** — validated by hand on 2026-10-17 |
 | M2 | LCD: framebuffer, status/clock/system/media (MPRIS)/text/blank pages, per-page LCD keys, `LcdText` | **done** on 2026-10-17 |
 | M3 | Macros: TOML format, playback (once / while_held / toggle), safe release, `MacroRecorder` (pure logic for the GUI), `RunMacro`/`StopMacros`/`SetRecording` | **done** on 2026-10-17 |
-| M4 | GTK4/Adw GUI: profiles, keys (learning), stick, LCD & colour, macros + recording | **first version** on 2026-10-17, under test |
-| M5 | Hotplug/suspend, MPRIS, docs, `make install` | clean, reproducible installation |
-| M6 | **Step 2**: replace the previous userspace (libusb) drivers: stop them, remove their udev rules and autostart entries, let the kernel take the device back | the G13 is handled by g13d alone |
+| M4 | GTK4/Adw GUI: profiles, keys (learning), stick, LCD & colour, macros + recording | **done**, test feedback integrated on 2026-10-17 |
+| M5 | Hotplug/suspend, MPRIS, docs, `make install` | **validated** on 2026-10-17: unplug/replug and suspend/resume OK; MR-key recording dropped (GUI only) |
+| M6 | **Step 2**: replace the previous userspace (libusb) drivers: stop them, remove their udev rules and autostart entries, let the kernel take the device back | **done** on 2026-10-17 |
 
 Each milestone: pytest off-hardware + real test on the G13 + commit.
 

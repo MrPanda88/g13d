@@ -37,8 +37,8 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - M1 daemon + CLI + udev + systemd: done, validated by hand (2026-10-17)
 - M2 LCD pages (status, clock, system, media/MPRIS, text, blank): done (2026-10-17)
 - M3 macros (model, player, recorder logic, D-Bus/CLI): done (2026-10-17)
-- M4 GTK4/Adw GUI (`g13d/gui/`): v1 + fixes after testing (2026-10-17)
-- Next: M5 polish (hotplug/suspend, packaging), M6 replacing the libusb drivers
+- M4 GTK4/Adw GUI (`g13d/gui/`): done, test feedback integrated (2026-10-17)
+- M5 validated by hand (hotplug, suspend/resume) and M6 done (2026-10-17). Project in use; improvements on request
 
 ## Useful commands
 - Tests: `make test` (pytest, no hardware needed)
