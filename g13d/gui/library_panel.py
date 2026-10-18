@@ -11,22 +11,26 @@ gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, Gio, Graphene, Gtk, Pango  # noqa: E402
 
 from g13d.config.library import ActionLibrary, LibraryEntry  # noqa: E402
-from g13d.config.model import Action  # noqa: E402
+from g13d.config.model import LIBRARY_SORTS, Action  # noqa: E402
 
 from .dnd import make_action_source  # noqa: E402
 from .keymap import action_label  # noqa: E402
 
-ICONS = {"key": "input-keyboard-symbolic", "combo": "input-keyboard-symbolic", "macro": "media-record-symbolic",
+ICONS = {"key": "input-keyboard-symbolic", "combo": "preferences-desktop-keyboard-shortcuts-symbolic", "macro": "media-record-symbolic",
          "mouse": "input-mouse-symbolic", "mode": "view-refresh-symbolic", "profile": "user-info-symbolic",
          "lcd_page": "video-display-symbolic"}
 
 
+TYPE_ORDER = ("key", "combo", "mouse", "macro", "mode", "profile", "lcd_page")
+
+
 class _Row(Gtk.ListBoxRow):
-    def __init__(self, action: Action, label: str, is_macro: bool):
+    def __init__(self, action: Action, label: str, is_macro: bool, index: int):
         super().__init__()
         self.action = action
         self.label = label
         self.is_macro = is_macro
+        self.index = index
         box = Gtk.Box(spacing=8, margin_start=8, margin_end=8, margin_top=6, margin_bottom=6)
         box.append(Gtk.Image.new_from_icon_name(ICONS.get(action.type, "emblem-system-symbolic")))
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -51,18 +55,28 @@ class LibraryPanel(Gtk.Box):
     on_remove(entry) edit the library; on_library_changed() saves it."""
 
     def __init__(self, on_add: Callable[[], None], on_edit: Callable[[LibraryEntry], None],
-                 on_rename: Callable[[LibraryEntry, str], None], on_remove: Callable[[LibraryEntry], None]):
+                 on_rename: Callable[[LibraryEntry, str], None], on_remove: Callable[[LibraryEntry], None],
+                 sort: str = "added", on_sort: Callable[[str], None] | None = None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self._on_edit, self._on_rename, self._on_remove = on_edit, on_rename, on_remove
+        self._on_sort = on_sort
         self._library = ActionLibrary()
         self._macros: list[str] = []
+        self._sort = sort if sort in LIBRARY_SORTS else "added"
 
-        self._search = Gtk.SearchEntry(placeholder_text="Search assignments", margin_start=6, margin_end=6, margin_top=6,
-                                       margin_bottom=6)
+        top = Gtk.Box(spacing=4, margin_start=6, margin_end=6, margin_top=6, margin_bottom=6)
+        self._search = Gtk.SearchEntry(placeholder_text="Search assignments", hexpand=True)
         self._search.connect("search-changed", lambda *_: self._list.invalidate_filter())
-        self.append(self._search)
+        top.append(self._search)
+        self._sort_menu = Gtk.DropDown(model=Gtk.StringList.new(["Added", "Name", "Type"]), tooltip_text="Sort",
+                                       valign=Gtk.Align.CENTER)
+        self._sort_menu.set_selected(LIBRARY_SORTS.index(self._sort))
+        self._sort_menu.connect("notify::selected", self._sort_changed)
+        top.append(self._sort_menu)
+        self.append(top)
         self._list = Gtk.ListBox(css_classes=["navigation-sidebar"], selection_mode=Gtk.SelectionMode.NONE, vexpand=True)
         self._list.set_filter_func(self._filter)
+        self._list.set_sort_func(self._compare)
         self._list.set_header_func(self._header)
         self.append(Gtk.ScrolledWindow(child=self._list, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER))
         hint = Gtk.Label(label="Drag an assignment onto a key of the G13.", css_classes=["dim-label", "caption"], wrap=True,
@@ -94,10 +108,10 @@ class LibraryPanel(Gtk.Box):
         self._library, self._macros = library, sorted(macros)
         while (row := self._list.get_row_at_index(0)) is not None:
             self._list.remove(row)
-        for name in self._macros:
-            self._list.append(_Row(Action.macro(name), name, True))
-        for e in library.entries:
-            self._list.append(_Row(e.action, e.label, False))
+        for i, name in enumerate(self._macros):
+            self._list.append(_Row(Action.macro(name), name, True, i))
+        for i, e in enumerate(library.entries):
+            self._list.append(_Row(e.action, e.label, False, i))
 
     def refresh_labels(self) -> None:
         i = 0
@@ -106,6 +120,26 @@ class LibraryPanel(Gtk.Box):
             i += 1
 
     # ---- list cosmetics ------------------------------------------------------------
+    def _sort_changed(self, *_: object) -> None:
+        self._sort = LIBRARY_SORTS[self._sort_menu.get_selected()]
+        self._list.invalidate_sort()
+        self._list.invalidate_headers()
+        if self._on_sort is not None:
+            self._on_sort(self._sort)
+
+    def _key(self, row: _Row):
+        """Macros always come first; then the chosen order (type groups keep the library's own order inside)."""
+        if self._sort == "name":
+            return (row.is_macro is False, row.label.casefold())
+        if self._sort == "type":
+            t = TYPE_ORDER.index(row.action.type) if row.action.type in TYPE_ORDER else len(TYPE_ORDER)
+            return (row.is_macro is False, t, row.label.casefold())
+        return (row.is_macro is False, row.index)
+
+    def _compare(self, a: _Row, b: _Row) -> int:
+        ka, kb = self._key(a), self._key(b)
+        return -1 if ka < kb else (1 if ka > kb else 0)
+
     def _filter(self, row: _Row) -> bool:
         q = self._search.get_text().strip().lower()
         return not q or q in row.label.lower() or q in action_label(row.action).lower() or q in row.action.describe().lower()

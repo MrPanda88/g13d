@@ -155,7 +155,8 @@ class MainWindow(Adw.ApplicationWindow):
             keys_widget: Gtk.Widget = self._keys
             self._profiles_ui = ProfilesBar(self._profile_picked, self._profile_command)
             content.add_bottom_bar(self._profiles_ui)
-            self._library_panel = LibraryPanel(self._library_new, self._library_edit, self._library_rename, self._library_remove)
+            self._library_panel = LibraryPanel(self._library_new, self._library_edit, self._library_rename, self._library_remove,
+                                               self._settings.gui_library_sort, self._library_sort_changed)
             side = Adw.ToolbarView()
             side_header = Adw.HeaderBar(show_end_title_buttons=False)
             side_header.set_title_widget(Gtk.Label(label="Assignments", css_classes=["heading"]))
@@ -166,6 +167,23 @@ class MainWindow(Adw.ApplicationWindow):
             toggle = Gtk.ToggleButton(icon_name="sidebar-show-symbolic", tooltip_text="Show or hide the assignments")
             split.bind_property("show-sidebar", toggle, "active", 3)  # bidirectional | sync-create
             header.pack_start(toggle)
+            # the assignments panel and the profile tiles only make sense on the Keys tab
+            self._sidebar_wanted = True
+            self._switching_tab = False
+
+            def tab_changed(*_):
+                keys = self._stack.get_visible_child_name() == "keys"
+                self._switching_tab = True
+                split.set_show_sidebar(keys and self._sidebar_wanted)
+                toggle.set_visible(keys)
+                self._profiles_ui.set_visible(keys)
+                self._switching_tab = False
+
+            def sidebar_toggled(*_):
+                if not self._switching_tab and self._stack.get_visible_child_name() == "keys":
+                    self._sidebar_wanted = split.get_show_sidebar()
+            split.connect("notify::show-sidebar", sidebar_toggled)
+            self._stack.connect("notify::visible-child-name", tab_changed)
             root: Gtk.Widget = split
         else:
             self._keys = KeysPage(self._edit_control, self._mode_selected, self._drop_action, self._label_for, self._unassign)
@@ -425,6 +443,10 @@ class MainWindow(Adw.ApplicationWindow):
         """LCD pages / options (global) were edited in the GUI."""
         self._store.save_settings(self._settings)
         self._schedule_reload()
+
+    def _library_sort_changed(self, order: str) -> None:
+        self._settings.gui_library_sort = order
+        self._store.save_settings(self._settings)
 
     def _macros_changed(self) -> None:
         self._schedule_reload()
