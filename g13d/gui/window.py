@@ -15,12 +15,13 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 from g13d import __version__  # noqa: E402
-from g13d.config.defaults import default_profile  # noqa: E402
 from g13d.config.library import LibraryEntry  # noqa: E402
 from g13d.config.loader import ConfigStore  # noqa: E402
-from g13d.config.model import GUI_LAYOUTS, MODES, Action, Profile, Settings  # noqa: E402
+from g13d.config.model import GUI_LAYOUTS, MODES, Action, Profile, Settings, order_profiles  # noqa: E402
 
 from .action_editor import ActionEditor  # noqa: E402
+from .widgets import focus_entry  # noqa: E402
+from .app_dialog import AppDialog  # noqa: E402
 from .client import DaemonClient  # noqa: E402
 from .device_view import DevicePage  # noqa: E402
 from .keymap import action_label, watch_keymap  # noqa: E402
@@ -107,6 +108,7 @@ class MainWindow(Adw.ApplicationWindow):
         client.connect("changed", lambda *_: self._sync_from_daemon())
         client.connect("key-event", self._on_key_event)
         client.connect("error", lambda _c, msg: self.toast(msg))
+        client.connect("config-changed", lambda *_: self.reload_all(reload_daemon=False))
         self._load_profiles()
         self._sync_from_daemon()
 
@@ -235,9 +237,24 @@ class MainWindow(Adw.ApplicationWindow):
         self._rebuild_list()
         self._select_profile(wanted if wanted in self._profiles else next(iter(self._profiles)), activate=False)
 
+    def _ordered(self) -> list[str]:
+        return order_profiles(self._profiles, self._settings.profile_order)
+
     def _rebuild_list(self) -> None:
-        self._profiles_ui.rebuild(self._profiles, self._settings.default_profile, self._client.profile,
+        ordered = {n: self._profiles[n] for n in self._ordered()}
+        self._profiles_ui.rebuild(ordered, self._settings.default_profile, self._client.profile,
                                   self._profile.name if self._profile else "")
+
+    def _move_profile(self, src: int, dest: int) -> None:
+        """Reorder (drag or menu): the full order is saved so the daemon and the LCD follow."""
+        names = self._ordered()
+        if not (0 <= src < len(names) and 0 <= dest < len(names)) or src == dest:
+            return
+        names.insert(dest, names.pop(src))
+        self._settings.profile_order = names
+        self._store.save_settings(self._settings)
+        self._rebuild_list()
+        self._schedule_reload()
 
     def _select_profile(self, name: str, activate: bool) -> None:
         self._profile = self._profiles.get(name)
@@ -245,7 +262,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._updating = True
         self._keys.set_profile(self._profile)
         self._stick.set_profile(self._profile)
-        self._lcd.set_profile(self._profile, sorted(self._profiles))
+        self._lcd.set_profile(self._profile, self._ordered())
         self._updating = False
         if activate and self._client.available and name != self._client.profile:
             self._client.set_profile(name)
@@ -255,9 +272,17 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _profile_command(self, cmd: str, name: str) -> None:
         prof = self._profiles.get(name) or self._profile
+        if cmd.startswith("move:"):
+            _, src, dest = cmd.split(":")
+            self._move_profile(int(src), int(dest))
+            return
+        if cmd in ("move-up", "move-down") and prof:
+            i = self._ordered().index(prof.name)
+            self._move_profile(i, i - 1 if cmd == "move-up" else i + 1)
+            return
         match cmd:
             case "new":
-                self._ask_name("New profile", "Default", lambda n: self._create(default_profile(n)))
+                self._new_profile_dialog()
             case "duplicate" if prof:
                 self._ask_name("Duplicate profile", f"{prof.name} copy", lambda n: self._create(prof.copy(n)))
             case "rename" if prof:
@@ -272,6 +297,64 @@ class MainWindow(Adw.ApplicationWindow):
                 prof.icon = ""
                 self._store.save_profile(prof)
                 self._rebuild_list()
+            case "app" if prof:
+                self.link_app_dialog(prof.name)
+            case "lock" if prof:
+                if not self._client.available:
+                    self.toast("g13d is not running")
+                else:
+                    self._client.set_locked_profile("" if self._client.locked_profile == prof.name else prof.name)
+
+    def _new_profile_dialog(self) -> None:
+        """Name + the profile to start from: the default profile when there is one, else an empty profile."""
+        names = self._ordered()
+        choices = ["Empty profile (no assignment)"] + names
+        dlg = Adw.AlertDialog(heading="New profile")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        entry = Gtk.Entry(placeholder_text="Name", activates_default=True)
+        box.append(entry)
+        based = Adw.ComboRow(title="Based on", model=Gtk.StringList.new(choices))
+        default = self._settings.default_profile
+        based.set_selected(1 + names.index(default) if default in names else 0)
+        group = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
+        group.append(based)
+        box.append(group)
+        dlg.set_extra_child(box)
+        dlg.add_response("cancel", "Cancel")
+        dlg.add_response("ok", "Create")
+        dlg.set_default_response("ok")
+        dlg.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
+
+        def on_resp(_d, resp):
+            name = entry.get_text().strip()
+            if resp != "ok" or not name:
+                return
+            if name in self._profiles:
+                self.toast(f"A profile named “{name}” already exists")
+                return
+            i = based.get_selected()
+            if i == 0:
+                prof = Profile(name=name, backlight=(51, 153, 255))
+            else:
+                prof = self._profiles[names[i - 1]].copy(name)
+                prof.app = ""            # one application, one profile
+            self._create(prof)
+        dlg.connect("response", on_resp)
+        dlg.present(self)
+        focus_entry(entry)
+
+    def link_app_dialog(self, name: str) -> None:
+        prof = self._profiles.get(name)
+        if prof is None:
+            return
+
+        def save(rule: str) -> None:
+            prof.app = rule
+            self._store.save_profile(prof)
+            self._rebuild_list()
+            self._schedule_reload()
+            self.toast(f"“{prof.name}” linked to {rule}" if rule else f"“{prof.name}” no longer linked to an application")
+        AppDialog(prof, self._client, save, self.toast).present(self)
 
     def _set_default(self, name: str) -> None:
         self._settings.default_profile = "" if self._settings.default_profile == name else name
@@ -385,6 +468,7 @@ class MainWindow(Adw.ApplicationWindow):
             cb(name)
         dlg.connect("response", on_resp)
         dlg.present(self)
+        focus_entry(entry)
 
     # ---- editing ------------------------------------------------------------------------
     def _mode_selected(self, mode: int) -> None:
@@ -398,17 +482,19 @@ class MainWindow(Adw.ApplicationWindow):
         self._edit_control(control)
 
     def _editor(self, title: str, action: Action, on_save, on_unassign=None) -> ActionEditor:
+        """The one assignment editor: for a key or a library entry, with the library name of the action."""
         pages = self._client.available_pages or ["status", "clock", "system", "media", "text", "blank"]
         macros = sorted(self._store.load_macros())
-        return ActionEditor(title, action, macros, sorted(self._profiles), pages, on_save, on_unassign)
+        entry = self._library.find(action)
+        return ActionEditor(title, action, macros, self._ordered(), pages, on_save, on_unassign, entry.label if entry else "")
 
     def _edit_control(self, control: str) -> None:
         if self._profile is None:
             return
         action = self._profile.binding(self._mode, control)
 
-        def on_save(new: Action) -> None:
-            self._assign(control, new)
+        def on_save(new: Action, label: str) -> None:
+            self._assign(control, new, label)
         self._editor(control, action, on_save, (lambda: self._unassign(control)) if action.type != "none" else None).present(self)
 
     def _unassign(self, control: str) -> None:
@@ -417,12 +503,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._assign(control, Action.none())
         self.toast(f"{control} unassigned (M{self._mode})")
 
-    def _assign(self, control: str, action: Action) -> None:
+    def _assign(self, control: str, action: Action, label: str = "") -> None:
         assert self._profile is not None
         self._profile.set_binding(self._mode, control, action)
+        self._library_add(action, label)
         self._keys.refresh()
         self._profile_changed()
-        self._library_add(action)
 
     def _drop_action(self, control: str, action: Action) -> bool:
         """An assignment was dropped on a key."""
@@ -473,23 +559,39 @@ class MainWindow(Adw.ApplicationWindow):
         if self._library_panel is not None:
             self._library_panel.set_library(self._library, list(self._store.load_macros()))
 
-    def _library_add(self, action: Action) -> None:
-        if self._library.add(action) is not None:
+    def _library_add(self, action: Action, label: str = "") -> None:
+        """Make sure `action` is in the library, named `label` when one is given (renames an existing entry)."""
+        if action.type in ("none", "macro"):
+            return
+        entry = self._library.find(action)
+        changed = (entry is None and self._library.add(action, label) is not None) or \
+                  (entry is not None and bool(label) and self._library.rename(action, label))
+        if changed:
             self._store.save_library(self._library)
             self._refresh_library()
+            self._keys.refresh()
 
     def _library_new(self) -> None:
-        self._editor("New assignment", Action.none(), self._library_add).present(self)
+        def on_save(action: Action, label: str) -> None:
+            if action.type == "none":
+                self.toast("Choose an action")
+            elif self._library.find(action) is not None:
+                self.toast("That assignment is already in the library")
+            else:
+                self._library_add(action, label)
+        self._editor("New assignment", Action.none(), on_save).present(self)
 
     def _library_edit(self, entry: LibraryEntry) -> None:
-        def on_save(new: Action) -> None:
+        def on_save(new: Action, label: str) -> None:
             if new.type == "none":
                 self.toast("Choose an action, or remove the entry instead")
-            elif self._library.replace(entry.action, new):
-                self._store.save_library(self._library)
-                self._refresh_library()
-            else:
+                return
+            if new != entry.action and not self._library.replace(entry.action, new):
                 self.toast("That assignment is already in the library")
+                return
+            self._library.rename(new, label)
+            self._store.save_library(self._library)
+            self._refresh_library()
         self._editor(entry.label, entry.action, on_save).present(self)
 
     def _library_rename(self, entry: LibraryEntry, label: str) -> None:
@@ -518,14 +620,15 @@ class MainWindow(Adw.ApplicationWindow):
     def show_tab(self, name: str) -> None:
         self._stack.set_visible_child_name(name)
 
-    def reload_all(self) -> None:
+    def reload_all(self, reload_daemon: bool = True) -> None:
         self._library = self._store.load_library()
         self._settings = self._store.load_settings()
         self._lcd.set_settings(self._settings)
         self._load_profiles()
         self._macros.reload()
         self._refresh_library()
-        self._schedule_reload()
+        if reload_daemon:
+            self._schedule_reload()
 
     # ---- daemon state -------------------------------------------------------------------
     def _sync_from_daemon(self) -> None:
@@ -533,14 +636,18 @@ class MainWindow(Adw.ApplicationWindow):
         self._banner.set_revealed(not c.available)
         if c.available:
             dev = "G13 connected" if c.device_connected else "G13 not detected"
-            self._status.set_label(f"{dev} · active: {c.profile} M{c.mode}" + (" · recording" if c.recording else ""))
+            auto = f" (for {c.focused_app})" if c.auto_switched and c.focused_app else (" (automatic)" if c.auto_switched else "")
+            lock = " · locked" if c.locked_profile == c.profile else ""
+            self._status.set_label(f"{dev} · active: {c.profile}{auto}{lock} M{c.mode}" + (" · recording" if c.recording else ""))
         else:
             self._status.set_label("daemon not running")
-        self._profiles_ui.set_active(c.profile)
+        self._profiles_ui.set_active(c.profile, c.locked_profile)
         if c.available and c.profile and c.profile != self._seen_daemon_profile:
             self._seen_daemon_profile = c.profile
-            if c.profile in self._profiles and (self._profile is None or self._profile.name != c.profile):
-                self._select_profile(c.profile, activate=False)   # follow what the device switched to
+            # follow what the device switched to, but not the automatic per-application switches: the user
+            # is probably editing the profile of the application they just left
+            if c.profile in self._profiles and not c.auto_switched and (self._profile is None or self._profile.name != c.profile):
+                self._select_profile(c.profile, activate=False)
         if c.available and c.mode != self._seen_daemon_mode:
             self._seen_daemon_mode = c.mode
             if self._profile is not None and self._profile.name == c.profile and c.mode != self._mode:

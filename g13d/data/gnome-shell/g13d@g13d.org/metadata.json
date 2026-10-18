@@ -1,0 +1,8 @@
+{
+  "uuid": "g13d@g13d.org",
+  "name": "g13d focus tracker",
+  "description": "Tells the g13d daemon which window is focused, so it can switch G13 profiles per application. Session bus: org.gnome.Shell /org/g13d/Shell (org.g13d.Shell).",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/MrPanda88/g13d",
+  "version": 1
+}

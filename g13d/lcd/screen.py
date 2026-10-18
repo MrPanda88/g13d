@@ -27,6 +27,7 @@ class Screen:
         self._pages: list[Page] = make_pages(["status"])
         self._index = 0
         self._options: dict[str, str] = {}
+        self._modal: Page | None = None          # a page taking over the panel and its buttons (e.g. capture)
         self._message: tuple[str, float] | None = None   # text, deadline
         self._task: asyncio.Task | None = None
         self._last: bytes | None = None
@@ -79,6 +80,22 @@ class Screen:
         return self._pages[self._index]
 
     @property
+    def shown(self) -> Page:
+        """What is on the panel right now: the modal page if any, else the current page."""
+        return self._modal or self.current
+
+    def push_modal(self, page: Page) -> None:
+        self._modal = page
+        self._message = None
+        page.shown(self._ctx)
+        self.refresh(force=True)
+
+    def pop_modal(self) -> None:
+        if self._modal is not None:
+            self._modal = None
+            self.refresh(force=True)
+
+    @property
     def page_names(self) -> list[str]:
         return [p.name for p in self._pages]
 
@@ -111,14 +128,14 @@ class Screen:
 
     def reserves(self, index: int) -> bool:
         """Whether the page on screen takes LCD button `index` even when the key is bound."""
-        return index in self.current.reserved_buttons
+        return index in self.shown.reserved_buttons
 
     def button(self, index: int) -> bool:
         if self._message:
             self._message = None
             self.refresh(force=True)
             return True
-        return self.current.button(index, self._ctx)
+        return self.shown.button(index, self._ctx)
 
     def message(self, text: str, seconds: float = 3.0) -> None:
         self._message = (text, time.monotonic() + max(seconds, 0.1))
@@ -145,9 +162,9 @@ class Screen:
         else:
             self._message = None
             try:
-                self.current.render(draw, img, self._ctx)
+                self.shown.render(draw, img, self._ctx)
             except Exception:  # a broken page must never kill the daemon
-                log.exception("LCD page %s failed to render", self.current.name)
+                log.exception("LCD page %s failed to render", self.shown.name)
         data = encode(img)
         if force or data != self._last:
             self._last = data

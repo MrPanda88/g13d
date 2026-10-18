@@ -14,11 +14,14 @@ class Ctx:
     mode = 3
     recording = False
     connected = True
+    focused_app = "Some Game"
+    locked_profile = "Bob"
     calls = []
 
     def set_mode(self, m): self.calls.append(("mode", m))
     def cycle_profile(self, d): self.calls.append(("cycle", d))
     def set_profile(self, n): self.calls.append(("profile", n))
+    def set_locked_profile(self, n): self.calls.append(("lock", n))
 
 
 def _render(page):
@@ -55,16 +58,21 @@ def test_profiles_page_navigation():
     from g13d.lcd.pages.profiles import ProfilesPage
     ctx = Ctx(); ctx.calls = []
     page = ProfilesPage()
-    assert page.reserved_buttons == (1, 2, 3)
+    assert page.reserved_buttons == (1, 2, 3, 4)
     page.shown(ctx)
-    names = sorted(ctx.profile_names)
+    names = list(ctx.profile_names)
     assert names[page.cursor] == ctx.profile_name
     assert page.button(2, ctx) and names[page.cursor] == names[(names.index(ctx.profile_name) + 1) % 5]
     for _ in range(5):
         page.button(1, ctx)
     assert page.button(3, ctx)
     assert ctx.calls == [("profile", names[page.cursor])]
-    assert not page.button(4, ctx)
+    # LCD4 locks the profile under the cursor, unlocks when it is the locked one
+    ctx.locked_profile = "nobody"
+    assert page.button(4, ctx) and ctx.calls[-1] == ("lock", names[page.cursor])
+    ctx.locked_profile = names[page.cursor]
+    assert page.button(4, ctx) and ctx.calls[-1] == ("lock", "")
+    _render(page)
     _render(page)                                # with the scrollbar (5 profiles, 3 rows)
     empty = Ctx(); empty.profile_names = []
     assert not page.button(3, empty)
@@ -97,3 +105,21 @@ def test_text_helpers():
     assert marquee(draw, "y" * 50, f, 160, 0.0) != marquee(draw, "y" * 50 + "z", f, 160, 100.0)
     lines = wrap(draw, "one two three four five six seven eight nine ten", f, 80)
     assert len(lines) > 1 and all(draw.textlength(l, font=f) <= 80 for l in lines)
+
+
+def test_capture_page_and_modal_screen():
+    from g13d.lcd.pages.capture import CapturePage
+    from g13d.lcd.screen import Screen
+    events = []
+    page = CapturePage("Gaming", lambda: events.append("ok"), lambda: events.append("cancel"))
+    assert any(_render(page)[32:])
+    assert page.reserved_buttons == (1, 2, 3, 4)
+    ctx = Ctx()
+    screen = Screen(ctx)
+    screen.set_pages(["status", "clock"])
+    assert screen.shown is screen.current and not screen.reserves(3)
+    screen.push_modal(page)
+    assert screen.shown is page and screen.reserves(3) and screen.current.name == "status"
+    assert screen.button(3) and screen.button(4) and events == ["ok", "cancel"]
+    screen.pop_modal()
+    assert screen.shown is screen.current

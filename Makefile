@@ -4,11 +4,15 @@ PIP_FLAGS ?= --user --no-build-isolation
 UNIT_DIR := $(HOME)/.config/systemd/user
 UDEV_RULE := /etc/udev/rules.d/70-g13d.rules
 
-.PHONY: help install install-udev enable uninstall uninstall-udev test lint
+EXT_UUID := g13d@g13d.org
+EXT_DIR := $(HOME)/.local/share/gnome-shell/extensions/$(EXT_UUID)
+
+.PHONY: help install install-udev install-extension enable uninstall uninstall-udev test lint
 
 help:
 	@echo "make install-udev   # (sudo) install udev rule, reload, trigger"
 	@echo "make install        # pip install (editable, user site) + systemd user unit"
+	@echo "make install-extension  # GNOME Shell extension for per-application profiles (then log out / in)"
 	@echo "make enable         # enable + start g13d.service"
 	@echo "make uninstall      # stop service, remove unit, pip uninstall"
 	@echo "make test           # run the test-suite"
@@ -26,6 +30,12 @@ install:
 	-update-desktop-database $(HOME)/.local/share/applications 2>/dev/null
 	systemctl --user daemon-reload
 
+install-extension:
+	rm -rf $(EXT_DIR)
+	cp -r g13d/data/gnome-shell/$(EXT_UUID) $(EXT_DIR)
+	-gnome-extensions enable $(EXT_UUID) 2>/dev/null
+	@echo "Extension installed. GNOME loads new extensions at login: log out and back in, then check 'g13ctl status'."
+
 enable:
 	systemctl --user enable --now g13d.service
 	systemctl --user --no-pager status g13d.service
@@ -33,6 +43,8 @@ enable:
 uninstall:
 	-systemctl --user disable --now g13d.service
 	rm -f $(UNIT_DIR)/g13d.service $(HOME)/.local/share/applications/org.g13d.Gui.desktop
+	-gnome-extensions disable $(EXT_UUID) 2>/dev/null
+	rm -rf $(EXT_DIR)
 	systemctl --user daemon-reload
 	-$(PY) -m pip uninstall -y g13d
 

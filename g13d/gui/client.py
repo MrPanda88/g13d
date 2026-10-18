@@ -20,6 +20,7 @@ class DaemonClient(GObject.Object):
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "key-event": (GObject.SignalFlags.RUN_FIRST, None, (str, bool)),
         "error": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "config-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),   # the daemon wrote a config file itself
     }
 
     def __init__(self) -> None:
@@ -36,6 +37,11 @@ class DaemonClient(GObject.Object):
         self.lcd_page = ""
         self.lcd_pages: list[str] = []
         self.available_pages: list[str] = []
+        self.focused_app = ""
+        self.focus_tracking = False     # the desktop reports the focused window (GNOME Shell extension)
+        self.auto_switched = False      # the current profile was picked for the focused application
+        self.auto_profiles = True
+        self.locked_profile = ""
         Gio.DBusProxy.new_for_bus(Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, None, BUS_NAME, OBJECT_PATH,
                                   INTERFACE, None, self._on_proxy_ready)
 
@@ -70,13 +76,20 @@ class DaemonClient(GObject.Object):
         self.lcd_page = self._prop("CurrentLcdPage", "")
         self.lcd_pages = list(self._prop("LcdPages", []))
         self.available_pages = list(self._prop("AvailableLcdPages", []))
+        self.focused_app = self._prop("FocusedApp", "")
+        self.focus_tracking = bool(self._prop("FocusTracking", False))
+        self.auto_switched = bool(self._prop("AutoSwitched", False))
+        self.auto_profiles = bool(self._prop("AutoProfiles", True))
+        self.locked_profile = self._prop("LockedProfile", "")
         self.emit("changed")
 
     def _on_signal(self, _proxy, _sender, name: str, params: GLib.Variant) -> None:
         if name == "KeyEvent":
             key, pressed = params.unpack()
             self.emit("key-event", key, pressed)
-        elif name in ("ProfileChanged", "ModeChanged", "DeviceChanged", "RecordingChanged", "LcdPageChanged"):
+        elif name == "ConfigChanged":
+            self.emit("config-changed")
+        elif name in ("ProfileChanged", "ModeChanged", "DeviceChanged", "RecordingChanged", "LcdPageChanged", "FocusChanged"):
             self._sync()
 
     # ---- calls --------------------------------------------------------------
@@ -121,6 +134,33 @@ class DaemonClient(GObject.Object):
 
     def set_recording(self, recording: bool) -> None:
         self._call("SetRecording", GLib.Variant("(b)", (recording,)))
+
+    def capture_app(self, profile: str) -> None:
+        self._call("CaptureApp", GLib.Variant("(s)", (profile,)))
+
+    def cancel_capture(self) -> None:
+        self._call("CancelCapture")
+
+    def set_auto_profiles(self, enabled: bool) -> None:
+        self._call("SetAutoProfiles", GLib.Variant("(b)", (enabled,)))
+
+    def set_locked_profile(self, name: str) -> None:
+        self._call("SetLockedProfile", GLib.Variant("(s)", (name,)))
+
+    def list_apps(self, callback) -> None:
+        """callback(list of dicts with key / label / title / pid / ids), [] when unavailable."""
+        if self._proxy is None or not self.available:
+            callback([])
+            return
+
+        def done(proxy, res):
+            try:
+                (apps,) = proxy.call_finish(res).unpack()
+            except GLib.Error as exc:
+                log.warning("ListApps failed: %s", exc.message)
+                apps = []
+            callback(list(apps))
+        self._proxy.call("ListApps", None, Gio.DBusCallFlags.NONE, 5000, None, done)
 
     @staticmethod
     def start_daemon() -> None:

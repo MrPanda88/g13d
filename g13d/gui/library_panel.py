@@ -14,6 +14,7 @@ from g13d.config.library import ActionLibrary, LibraryEntry  # noqa: E402
 from g13d.config.model import LIBRARY_SORTS, Action  # noqa: E402
 
 from .dnd import make_action_source  # noqa: E402
+from .widgets import focus_entry  # noqa: E402
 from .keymap import action_label  # noqa: E402
 
 ICONS = {"key": "input-keyboard-symbolic", "combo": "preferences-desktop-keyboard-shortcuts-symbolic", "macro": "media-record-symbolic",
@@ -190,6 +191,7 @@ class LibraryPanel(Gtk.Box):
         dlg.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
         dlg.connect("response", lambda _d, r: r == "ok" and self._on_rename(e, entry.get_text()))
         dlg.present(self.get_root())
+        focus_entry(entry)
 
     def _menu_remove(self) -> None:
         if (e := self._entry()) is None:

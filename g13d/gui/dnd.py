@@ -12,8 +12,9 @@ from gi.repository import Gdk, GObject, Gtk  # noqa: E402
 from g13d.config.model import Action, ConfigError  # noqa: E402
 
 
-def make_reorderable(listbox: Gtk.ListBox, row: Gtk.ListBoxRow, index: int, on_move: Callable[[int, int], None]) -> None:
-    """Let `row` (at `index`) be dragged onto other rows of the same list. on_move(src, dest)."""
+def make_reorderable(listbox: Gtk.Widget, row: Gtk.Widget, index: int, on_move: Callable[[int, int], None],
+                     horizontal: bool = False) -> None:
+    """Let `row` (at `index`) be dragged onto its siblings in `listbox` (any container). on_move(src, dest)."""
     tag = f"g13d-row:{id(listbox)}:"
 
     src = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
@@ -33,7 +34,8 @@ def make_reorderable(listbox: Gtk.ListBox, row: Gtk.ListBoxRow, index: int, on_m
         if not isinstance(value, str) or not value.startswith(tag):
             return False
         src_index = int(value[len(tag):])
-        dest = index if y < row.get_height() / 2 else index + 1
+        before = (_x < row.get_width() / 2) if horizontal else (y < row.get_height() / 2)
+        dest = index if before else index + 1
         if src_index < dest:
             dest -= 1
         if src_index != dest:

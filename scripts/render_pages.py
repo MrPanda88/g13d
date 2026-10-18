@@ -11,16 +11,21 @@ from g13d.lcd.pages.text import TextPage
 
 class Ctx:
     profile_name = "Default"; mode = 2; recording = False; connected = True
-    profile_names = ["Default", "Diablo III", "StarCraft II", "Titanfall"]
+    profile_names = ["Default", "Diablo III", "StarCraft II", "Titanfall"]; focused_app = "Diablo III"; locked_profile = "StarCraft II"
     def set_mode(self, m): pass
     def cycle_profile(self, d): pass
     def set_profile(self, n): pass
+    def set_locked_profile(self, n): pass
 
 
 async def main():
     out = Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)
     from g13d.lcd.pages.clock import STYLES
     variants = [(name, {}) for name in BUILTIN] + [("clock", {"clock_style": s}) for s, _ in STYLES[1:]]
+    from g13d.lcd.pages.capture import CapturePage
+    cap = CapturePage("Gaming", lambda: None, lambda: None); ctx = Ctx(); cap.shown(ctx)
+    img = new_image(); cap.render(ImageDraw.Draw(img), img, ctx)
+    img.convert("L").resize((WIDTH * 4, HEIGHT * 4), Image.Resampling.NEAREST).save(out / "capture.png"); print("wrote", out / "capture.png")
     for name, options in variants:
         page = BUILTIN[name](); page.configure(options)
         if isinstance(page, TextPage):

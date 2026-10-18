@@ -33,10 +33,13 @@ class _Ctx:
     def __init__(self, profile: str, mode: int, profiles: list[str]):
         self.profile_name, self.mode, self.recording, self.connected = profile, mode, False, True
         self.profile_names = profiles or [profile]
+        self.focused_app = ""
+        self.locked_profile = ""
 
     def set_mode(self, m): ...
     def cycle_profile(self, d): ...
     def set_profile(self, n): ...
+    def set_locked_profile(self, n): ...
 
 
 def render_preview(page_name: str, profile_name: str, mode: int, backlight: tuple[int, int, int], scale: int = 2,

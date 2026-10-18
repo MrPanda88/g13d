@@ -112,3 +112,11 @@ def test_settings_library_sort():
     from g13d.config.model import Settings
     assert Settings.from_toml({"gui": {"library_sort": "type"}}).gui_library_sort == "type"
     assert Settings.from_toml({"gui": {"library_sort": "zzz"}}).gui_library_sort == "added"
+
+
+def test_order_profiles():
+    from g13d.config.model import Settings, order_profiles
+    assert order_profiles({"b", "a", "c"}, ["c", "zzz", "a"]) == ["c", "a", "b"]
+    assert order_profiles(["b", "a"], []) == ["a", "b"]
+    s = Settings(profile_order=["x", "y"])
+    assert Settings.from_toml(tomllib.loads(tomlout.dumps(s.to_toml()))).profile_order == ["x", "y"]

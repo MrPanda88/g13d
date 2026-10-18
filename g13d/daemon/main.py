@@ -14,12 +14,15 @@ import pyudev
 from g13d import __version__
 from g13d.config.defaults import default_profile
 from g13d.config.loader import ConfigStore
-from g13d.config.model import MODES, Action, Profile
+from g13d.config.model import order_profiles, MODES, Action, Profile
 from g13d.engine.actions import ActionRunner
 from g13d.engine.macros import MacroPlayer
 from g13d.engine.stick import Stick
 from g13d.engine.uinput_out import VirtualInput
 from g13d.hw.discover import G13Paths, diagnose, find_g13
+from g13d.lcd.pages.capture import CapturePage
+
+from .focus import FocusInfo, FocusTracker
 from g13d.hw.keypad import DeviceLost, Keypad
 from g13d.hw.lcd_dev import LcdDevice
 from g13d.hw.leds import Leds
@@ -37,7 +40,13 @@ class Daemon:
         self.profiles: dict[str, Profile] = store.load_profiles() or {"Default": default_profile()}
         self.macros = store.load_macros()
         state = store.load_state()
-        self.profile: Profile = self._pick_profile(state.get("profile"))
+        self.locked_profile: str = state.get("locked", "") if state.get("locked", "") in self.profiles else ""
+        # a locked profile is always the active one and never left automatically
+        self.profile: Profile = self.profiles[self.locked_profile] if self.locked_profile else self._pick_profile(state.get("profile"))
+        self.manual_profile: Profile = self.profile       # what the user chose; auto-switching returns to it
+        self.auto_switched = False
+        self.focus: FocusTracker | None = None
+        self._capture: tuple[str, asyncio.TimerHandle] | None = None
         self.mode: int = state.get("mode", 1) if state.get("mode") in MODES else 1
         self.recording = False
         self.connected = False
@@ -68,7 +77,30 @@ class Daemon:
 
     @property
     def profile_names(self) -> list[str]:
-        return sorted(self.profiles)
+        return order_profiles(self.profiles, self.settings.profile_order)
+
+    def set_locked_profile(self, name: str) -> None:
+        """Lock `name` (it becomes the active profile) or unlock with ""."""
+        if name and name not in self.profiles:
+            raise KeyError(name)
+        if name == self.locked_profile:
+            return
+        self.locked_profile = name
+        log.info("profile lock: %s", name or "released")
+        if name:
+            self.set_profile(name)          # also saves the state
+        else:
+            self._save_state()
+            if self.focus:
+                self._on_focus(self.focus.current)
+        self.screen.refresh(force=True)
+        if self.dbus:
+            self.dbus.emit_properties_changed({"LockedProfile": self.locked_profile})
+
+    @property
+    def focused_app(self) -> str:
+        info = self.focus.current if self.focus else None
+        return info.label if info else ""
 
     # ---- lifecycle --------------------------------------------------------
     async def run(self) -> None:
@@ -78,6 +110,8 @@ class Daemon:
             loop.add_signal_handler(sig, stop.set)
         loop.add_signal_handler(signal.SIGHUP, self.reload_config)
         bus, self.dbus = await start_bus(self)
+        self.focus = FocusTracker(bus, self._on_focus)
+        await self.focus.start()
         self._start_udev_monitor(loop)
         self.stick.configure(self.profile.stick)
         self.screen.set_pages(self.settings.lcd_pages, self.settings.lcd_options)
@@ -85,6 +119,8 @@ class Daemon:
         log.info("g13d %s ready, profile %r mode M%d", __version__, self.profile.name, self.mode)
         await stop.wait()
         log.info("shutting down")
+        if self.focus:
+            self.focus.stop()
         worker.cancel()
         await asyncio.gather(worker, return_exceptions=True)
         self.screen.clear()
@@ -232,17 +268,109 @@ class Daemon:
             self.dbus.ModeChanged(mode)
             self.dbus.emit_properties_changed({"CurrentMode": mode})
 
-    def set_profile(self, name: str) -> None:
+    def set_profile(self, name: str, automatic: bool = False) -> None:
+        """Switch profile. automatic=True: because of the focused application (the manual choice is kept)."""
         prof = self.profiles.get(name)
         if prof is None:
             log.warning("unknown profile %r", name)
             return
+        if automatic:
+            self.auto_switched = prof is not self.manual_profile
+        else:
+            self.manual_profile = prof
+            self.auto_switched = False
+            if self.locked_profile and self.locked_profile != prof.name:
+                # a deliberate switch away from the locked profile releases the lock
+                log.info("profile lock released by switching to %r", prof.name)
+                self.locked_profile = ""
+                if self.dbus:
+                    self.dbus.emit_properties_changed({"LockedProfile": ""})
         self._activate(prof)
         self._save_state()
-        log.info("profile %r", prof.name)
+        log.info("profile %r%s", prof.name, " (application)" if automatic else "")
         if self.dbus:
             self.dbus.ProfileChanged(prof.name)
-            self.dbus.emit_properties_changed({"CurrentProfile": prof.name})
+            self.dbus.emit_properties_changed({"CurrentProfile": prof.name, "AutoSwitched": self.auto_switched})
+
+    # ---- per-application profiles -------------------------------------------
+    def _on_focus(self, info: FocusInfo | None) -> None:
+        if self.dbus:
+            self.dbus.FocusChanged(info.label if info else "")
+            self.dbus.emit_properties_changed({"FocusedApp": info.label if info else ""})
+        if self._capture is not None:
+            self.screen.refresh()
+            return
+        if not self.settings.auto_profiles or self.locked_profile:
+            return
+        target = self.profile_for(info)
+        if target is None and self.auto_switched:
+            target = self.manual_profile
+        if target is not None and target is not self.profile:
+            self.set_profile(target.name, automatic=True)
+
+    def profile_for(self, info: FocusInfo | None) -> Profile | None:
+        if info is None:
+            return None
+        for name in self.profile_names:
+            prof = self.profiles[name]
+            if prof.app and info.matches(prof.app):
+                return prof
+        return None
+
+    def start_capture(self, profile_name: str, timeout: float = 90.0) -> None:
+        """Show the capture page: the user switches to the application and presses LCD3."""
+        if profile_name not in self.profiles:
+            raise KeyError(profile_name)
+        self.cancel_capture(silent=True)
+        page = CapturePage(profile_name, self._capture_confirm, self.cancel_capture)
+        handle = asyncio.get_running_loop().call_later(timeout, self.cancel_capture)
+        self._capture = (profile_name, handle)
+        self.screen.push_modal(page)
+
+    def cancel_capture(self, silent: bool = False) -> None:
+        if self._capture is None:
+            return
+        _name, handle = self._capture
+        handle.cancel()
+        self._capture = None
+        self.screen.pop_modal()
+        if not silent:
+            self.screen.message("Cancelled", 1.5)
+
+    def _capture_confirm(self) -> None:
+        if self._capture is None:
+            return
+        name, handle = self._capture
+        info = self.focus.current if self.focus else None
+        if info is None or not info.key:
+            self.screen.message("No window focused", 2.0)
+            return
+        handle.cancel()
+        self._capture = None
+        self.screen.pop_modal()
+        self.link_app(name, info.key)
+        self.screen.message(f"{name}\n= {info.label}", 3.0)
+
+    def link_app(self, profile_name: str, rule: str) -> None:
+        """Store the application rule in the profile file and tell the GUI."""
+        prof = self.profiles.get(profile_name)
+        if prof is None:
+            raise KeyError(profile_name)
+        prof.app = rule
+        self.store.save_profile(prof)
+        log.info("profile %r linked to application %r", profile_name, rule)
+        if self.dbus:
+            self.dbus.ConfigChanged()
+        if self.focus:
+            self._on_focus(self.focus.current)
+
+    def set_auto_profiles(self, enabled: bool) -> None:
+        self.settings.auto_profiles = enabled
+        self.store.save_settings(self.settings)
+        if self.dbus:
+            self.dbus.emit_properties_changed({"AutoProfiles": enabled})
+        if self.focus:
+            self._on_focus(self.focus.current)
 
     def _activate(self, prof: Profile) -> None:
         self._release_everything()
@@ -268,7 +396,7 @@ class Daemon:
             self.dbus.emit_properties_changed({"CurrentLcdPage": name})
 
     def cycle_profile(self, delta: int) -> None:
-        names = sorted(self.profiles)
+        names = self.profile_names
         if len(names) < 2:
             return
         i = names.index(self.profile.name) if self.profile.name in names else 0
@@ -305,15 +433,22 @@ class Daemon:
             return
         self.profiles = profiles
         self.macros = self.store.load_macros()
-        current = profiles.get(self.profile.name) or self._pick_profile(None)
+        if self.locked_profile and self.locked_profile not in profiles:
+            self.locked_profile = ""
+        self.manual_profile = profiles.get(self.manual_profile.name) or self._pick_profile(None)
+        # an automatically chosen profile that vanished falls back to the user's choice
+        current = profiles.get(self.profile.name) or self.manual_profile
+        self.auto_switched = current is not self.manual_profile
         self._activate(current)
         if self.screen.page_names != self.settings.lcd_pages or self.screen.options != self.settings.lcd_options:
             self.screen.set_pages(self.settings.lcd_pages, self.settings.lcd_options)
         self._save_state()
         log.info("configuration reloaded (%d profiles, %d macros), active %r", len(profiles), len(self.macros), current.name)
         if self.dbus:
-            self.dbus.emit_properties_changed({"Profiles": sorted(profiles), "CurrentProfile": current.name,
+            self.dbus.emit_properties_changed({"Profiles": self.profile_names, "CurrentProfile": current.name,
                                                "Macros": sorted(self.macros)})
+        if self.focus:
+            self._on_focus(self.focus.current)       # rules may have changed
 
     def _pick_profile(self, wanted: str | None) -> Profile:
         """Startup profile: the configured default if any, else the last used one, else the first."""
@@ -324,7 +459,7 @@ class Daemon:
 
     def _save_state(self) -> None:
         try:
-            self.store.save_state({"profile": self.profile.name, "mode": self.mode})
+            self.store.save_state({"profile": self.profile.name, "mode": self.mode, "locked": self.locked_profile})
         except OSError as exc:
             log.warning("cannot save state: %s", exc)
 
@@ -336,8 +471,14 @@ class Daemon:
             "diagnosis": diagnose(paths),
             "profile": self.profile.name,
             "mode": self.mode,
-            "profiles": sorted(self.profiles),
+            "profiles": self.profile_names,
             "default_profile": self.settings.default_profile,
+            "manual_profile": self.manual_profile.name,
+            "locked_profile": self.locked_profile,
+            "auto_switched": self.auto_switched,
+            "auto_profiles": self.settings.auto_profiles,
+            "focus_tracking": bool(self.focus and self.focus.available),
+            "focused_app": self.focused_app,
             "macros": sorted(self.macros),
             "active_macros": self.player.active,
             "recording": self.recording,

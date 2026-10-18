@@ -203,6 +203,7 @@ class Profile:
     name: str
     backlight: tuple[int, int, int] = (0, 0, 255)
     icon: str = ""              # GUI only: image file path or themed icon name shown on the profile tile
+    app: str = ""               # window class / app id / process the profile is for (auto-switch), "" = none
     stick: StickConfig = field(default_factory=StickConfig)
     modes: dict[int, Bindings] = field(default_factory=lambda: {m: {} for m in MODES})
     # [lcd] pages of profiles written before 1.2 (pages are global now): read once for migration, never written
@@ -243,6 +244,7 @@ class Profile:
             name=str(d.get("name", fallback_name)),
             backlight=backlight,  # type: ignore[arg-type]
             icon=str(d.get("icon", "")),
+            app=str(d.get("app", "")),
             stick=StickConfig.from_toml(d.get("stick")),
             modes=modes,
             legacy_lcd_pages=[str(p) for p in lcd["pages"]] if isinstance(lcd.get("pages"), list) else None,
@@ -253,6 +255,7 @@ class Profile:
             "name": self.name,
             "backlight": list(self.backlight),
             **({"icon": self.icon} if self.icon else {}),
+            **({"app": self.app} if self.app else {}),
             "stick": self.stick.to_toml(),
         }
         for m in MODES:
@@ -262,6 +265,14 @@ class Profile:
     def copy(self, new_name: str) -> Profile:
         return replace(self, name=new_name, stick=replace(self.stick),
                        modes={m: dict(b) for m, b in self.modes.items()})
+
+
+def order_profiles(names, order: list[str]) -> list[str]:
+    """`names` in the user's order: the ones listed in `order` first (in that order), the rest alphabetically."""
+    names = set(names)
+    out = [n for n in order if n in names]
+    out += sorted(names - set(out))
+    return out
 
 
 def _control_order(item):
@@ -274,6 +285,7 @@ class Settings:
     """Global daemon settings (~/.config/g13d/config.toml).
 
     default_profile: profile loaded when the daemon starts; empty = restore the last used one.
+    auto_profiles: switch to the profile linked to the focused application (needs the GNOME Shell extension).
     lcd_pages / lcd_options: the LCD pages shown (same whatever the profile) and their settings ([lcd]).
     gui_layout: how g13-gui arranges its window ([gui] layout): "gtk" (classic widgets) or "lgs" (device picture).
     gui_library_sort: order of the assignments panel ([gui] library_sort): "added", "name" or "type".
@@ -281,6 +293,8 @@ class Settings:
     default_profile: str = ""
     lcd_enabled: bool = True
     log_level: str = "INFO"
+    auto_profiles: bool = True          # switch to a profile when its application gets the focus
+    profile_order: list[str] = field(default_factory=list)   # display / cycling order; unknown names go last, A-Z
     lcd_pages: list[str] = field(default_factory=lambda: list(DEFAULT_LCD_PAGES))
     lcd_options: dict[str, str] = field(default_factory=dict)
     gui_layout: str = "gtk"
@@ -300,6 +314,8 @@ class Settings:
             default_profile=str(g.get("default_profile", "")),
             lcd_enabled=bool(g.get("lcd_enabled", True)),
             log_level=str(g.get("log_level", "INFO")).upper(),
+            auto_profiles=bool(g.get("auto_profiles", True)),
+            profile_order=[str(x) for x in g.get("profile_order", []) or []],
             lcd_pages=[str(x) for x in pages] if isinstance(pages, list) and pages else list(DEFAULT_LCD_PAGES),
             lcd_options={str(k): str(v) for k, v in ((lcd or {}).get("options", {}) or {}).items()},
             gui_layout=layout if layout in GUI_LAYOUTS else "gtk",
@@ -310,6 +326,8 @@ class Settings:
     def to_toml(self) -> dict:
         return {"general": {"default_profile": self.default_profile,
                             "lcd_enabled": self.lcd_enabled,
-                            "log_level": self.log_level},
+                            "log_level": self.log_level,
+                            "auto_profiles": self.auto_profiles,
+                            "profile_order": list(self.profile_order)},
                 "lcd": {"pages": list(self.lcd_pages), **({"options": dict(self.lcd_options)} if self.lcd_options else {})},
                 "gui": {"layout": self.gui_layout, "library_sort": self.gui_library_sort}}

@@ -7,7 +7,12 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+
+
+def focus_entry(entry: Gtk.Widget) -> None:
+    """Give a dialog's text field the focus once the dialog is on screen (set_focus before present is lost)."""
+    GLib.timeout_add(60, lambda: (entry.grab_focus(), False)[1])
 
 
 def attach_key_menu(button: Gtk.Widget, on_edit: Callable[[], None], on_unassign: Callable[[], None],

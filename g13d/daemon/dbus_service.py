@@ -46,7 +46,7 @@ class DaemonInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def Profiles(self) -> "as":
-        return sorted(self._d.profiles)
+        return self._d.profile_names
 
     @dbus_property(access=PropertyAccess.READ)
     def Recording(self) -> "b":
@@ -71,6 +71,29 @@ class DaemonInterface(ServiceInterface):
     @dbus_property(access=PropertyAccess.READ)
     def AvailableLcdPages(self) -> "as":
         return self._d.screen.available_pages()
+
+    @dbus_property(access=PropertyAccess.READ)
+    def FocusedApp(self) -> "s":
+        return self._d.focused_app
+
+    @dbus_property(access=PropertyAccess.READ)
+    def FocusTracking(self) -> "b":
+        """Whether the desktop reports the focused window (GNOME Shell extension present)."""
+        return bool(self._d.focus and self._d.focus.available)
+
+    @dbus_property(access=PropertyAccess.READ)
+    def AutoSwitched(self) -> "b":
+        """True while the current profile was chosen for the focused application, not by the user."""
+        return self._d.auto_switched
+
+    @dbus_property(access=PropertyAccess.READ)
+    def AutoProfiles(self) -> "b":
+        return self._d.settings.auto_profiles
+
+    @dbus_property(access=PropertyAccess.READ)
+    def LockedProfile(self) -> "s":
+        """The profile kept active whatever the focused application ("" = none)."""
+        return self._d.locked_profile
 
     # ---- methods ----------------------------------------------------------
     @method()
@@ -122,6 +145,36 @@ class DaemonInterface(ServiceInterface):
     def GetStatus(self) -> "s":
         return json.dumps(self._d.status(), indent=1)
 
+    @method()
+    async def ListApps(self) -> "aa{ss}":
+        """Windows currently open: key (what to store in a profile), label, title, pid."""
+        if not self._d.focus:
+            return []
+        return [{"key": w.key, "label": w.label, "title": w.title, "pid": str(w.pid), "ids": ", ".join(w.identifiers())}
+                for w in await self._d.focus.list_windows() if w.key]
+
+    @method()
+    def CaptureApp(self, profile: "s"):
+        """Show the LCD capture page: the user switches to the application and presses LCD3."""
+        if profile not in self._d.profiles:
+            raise DBusError("org.g13d.Error.NoSuchProfile", f"no profile named {profile!r}")
+        self._d.start_capture(profile)
+
+    @method()
+    def CancelCapture(self):
+        self._d.cancel_capture()
+
+    @method()
+    def SetAutoProfiles(self, enabled: "b"):
+        self._d.set_auto_profiles(enabled)
+
+    @method()
+    def SetLockedProfile(self, name: "s"):
+        """Lock a profile (it becomes active and automatic switching stops); "" unlocks."""
+        if name and name not in self._d.profiles:
+            raise DBusError("org.g13d.Error.NoSuchProfile", f"no profile named {name!r}")
+        self._d.set_locked_profile(name)
+
     # ---- signals ----------------------------------------------------------
     @signal()
     def ProfileChanged(self, name: str) -> "s":
@@ -146,6 +199,15 @@ class DaemonInterface(ServiceInterface):
     @signal()
     def LcdPageChanged(self, name: str) -> "s":
         return name
+
+    @signal()
+    def FocusChanged(self, app: str) -> "s":
+        return app
+
+    @signal()
+    def ConfigChanged(self) -> "":
+        """The daemon wrote a configuration file itself (e.g. linked a profile to an application)."""
+        return None
 
 
 async def start_bus(daemon: "Daemon") -> tuple[MessageBus, DaemonInterface]:

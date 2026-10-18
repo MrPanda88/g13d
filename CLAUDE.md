@@ -29,7 +29,12 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - `g13d/lcd/`: framebuffer encoding, pages, screen manager, MPRIS watcher. Pages may declare `reserved_buttons`
   (LCD keys they take even when bound, e.g. the profiles page) and `options` (global settings stored in config.toml
   `[lcd] options`, e.g. `clock_style`); `Page.shown(ctx)` runs when a page comes on screen
-- `g13d/daemon/`: asyncio main loop, D-Bus service `org.g13d`
+- `g13d/daemon/`: asyncio main loop, D-Bus service `org.g13d`; `focus.py` listens to the g13d GNOME Shell extension
+  (`data/gnome-shell/g13d@g13d.org`, interface `org.g13d.Shell` on gnome-shell's connection) and the daemon switches to
+  the profile whose `app` rule matches the focused window, back to `manual_profile` otherwise (`set_profile(automatic=)`).
+  `Screen.push_modal()` shows a page over the current one (capture page: LCD3 links the focused app to a profile).
+  `locked_profile` (daemon state, state.json) is always the active profile and blocks automatic switching; a
+  manual switch to another profile releases it
 - `g13d/gui/`: GTK4/libadwaita app `g13-gui`; `g13d/cli/`: `g13ctl`
   - two layouts built by `window.py:_build()` and switched live (`[gui] layout` in config.toml, menu ☰ → Layout):
     `gtk` (KeysPage grid + ProfilesSidebar) and `lgs` (DevicePage photo + LibraryPanel + ProfilesBar); the pre-1.1
@@ -38,7 +43,10 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
     `DeviceView` scales the photo to fit and places the overlays from them, so nothing drifts on resize
   - `data/g13.png` is generated from `image/g13_naked_template.jpeg` (user-supplied, legends already removed) by
     `scripts/make_device_image.py` (checkerboard keyed out); `scripts/check_geometry.py OUT.png` overlays the rects
-- `g13d/data/`: udev rule, systemd unit, desktop entry, device picture
+- `g13d/data/`: udev rule, systemd unit, desktop entry, device picture, GNOME Shell extension (`make install-extension`;
+  the Shell only loads new extensions at login; to test one without logging out: `dbus-run-session -- gnome-shell
+  --headless --wayland --no-x11 --virtual-monitor 800x600` and call it on that private bus; delete
+  `/run/user/UID/gnome-shell-disable-extensions` if a killed test run left it, or every extension is off at next login)
 - User config: `~/.config/g13d/config.toml` (settings incl. the global `[lcd]` pages/options and `[gui]`),
   `profiles/*.toml` (backlight, stick, bindings; `[lcd]` in old profiles is read once for migration), `macros/*.toml`,
   `actions.toml` (assignment library, `config/library.py`, seeded from the profiles' bindings and fed by every binding
@@ -53,6 +61,7 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - M5 validated by hand (hotplug, suspend/resume) and M6 done (2026-10-17). Published on GitHub (private) 2026-10-18
 - v1.0.0 released 2026-10-18 from branch `release-1.0` (last commit before the LGS layout); main is 1.1.0.dev0
 - M7 "LGS" layout (photo, assignment library with drag-and-drop, profile tiles, quick unassign), 2026-10-18 → v1.1.0
+- M9 per-application profiles (GNOME Shell extension, focus tracker, LCD capture page, Application dialog), 2026-10-18
 - M8 LCD: analog clock with dial styles (incl. exotic ones), profiles page (LCD1–3 reserved), colour picker (wheel +
   RGB + presets), LCD pages global instead of per profile, library sort, LGS side panels only on Keys, 2026-10-18
 

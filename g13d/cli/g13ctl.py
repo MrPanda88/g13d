@@ -35,7 +35,35 @@ async def cmd_status(args) -> None:
     print(f"lcd: {data['lcd_page']}  (pages: {', '.join(data['lcd_pages'])})")
     active = f"  running: {', '.join(data['active_macros'])}" if data['active_macros'] else ""
     print(f"macros: {', '.join(data['macros']) or '-'}{active}")
+    if data.get("locked_profile"):
+        print(f"locked: {data['locked_profile']}  (no automatic switching until unlocked)")
+    if data.get("focus_tracking"):
+        auto = "on" if data.get("auto_profiles") else "off"
+        why = f"  (chosen for it; back to {data['manual_profile']} when it loses the focus)" if data.get("auto_switched") else ""
+        print(f"focus: {data.get('focused_app') or '-'}  auto-profiles: {auto}{why}")
+    else:
+        print("focus: not reported by the desktop (g13d GNOME Shell extension not loaded), auto-profiles inactive")
     print(f"config: {data['config_dir']}")
+
+
+async def cmd_apps(args) -> None:
+    _, i = await _iface()
+    apps = await i.call_list_apps()
+    if not apps:
+        print("no window reported (is the g13d GNOME Shell extension enabled?)")
+    for a in sorted(apps, key=lambda a: a["label"].casefold()):
+        print(f"{a['key']:<40} {a['label']}  [{a['ids']}]")
+
+
+async def cmd_capture(args) -> None:
+    _, i = await _iface()
+    await i.call_capture_app(args.profile)
+    print(f"switch to the application, then press LCD 3 on the G13 to link it to {args.profile!r} (LCD 4 cancels)")
+
+
+async def cmd_lock(args) -> None:
+    _, i = await _iface()
+    await i.call_set_locked_profile(args.profile or "")
 
 
 async def cmd_profiles(args) -> None:
@@ -99,6 +127,7 @@ async def cmd_watch(args) -> None:
     i.on_profile_changed(lambda p: print(f"profile {p}", flush=True))
     i.on_device_changed(lambda c: print(f"device {'connected' if c else 'disconnected'}", flush=True))
     i.on_lcd_page_changed(lambda n: print(f"lcd {n}", flush=True))
+    i.on_focus_changed(lambda a: print(f"focus {a or '-'}", flush=True))
     i.on_recording_changed(lambda r: print(f"recording {'on' if r else 'off'}", flush=True))
     print("watching g13d events, Ctrl-C to stop", file=sys.stderr)
     await asyncio.Event().wait()
@@ -113,6 +142,11 @@ def cmd_diagnose(args) -> None:
         print(f"keypad: {paths.keypad_event}\nstick: {paths.stick_event}\nhidraw: {paths.hidraw}")
         for n, p in sorted(paths.leds.items()):
             print(f"led {n}: {p}")
+    import os
+    ext = os.path.expanduser("~/.local/share/gnome-shell/extensions/g13d@g13d.org")
+    system_ext = "/usr/share/gnome-shell/extensions/g13d@g13d.org"
+    where = ext if os.path.isdir(ext) else system_ext if os.path.isdir(system_ext) else None
+    print(f"gnome-shell extension (per-application profiles): {'installed at ' + where if where else 'not installed (make install-extension)'}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -121,6 +155,10 @@ def main(argv: list[str] | None = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("status", help="daemon and device status"); p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_status)
     sub.add_parser("profiles", help="list profiles").set_defaults(fn=cmd_profiles)
+    p = sub.add_parser("lock", help="lock a profile: it becomes active and applications stop switching profiles; no name = unlock")
+    p.add_argument("profile", nargs="?"); p.set_defaults(fn=cmd_lock)
+    sub.add_parser("apps", help="list the open windows the desktop reports (for per-application profiles)").set_defaults(fn=cmd_apps)
+    p = sub.add_parser("capture", help="link a profile to the next application you focus (confirm with LCD 3)"); p.add_argument("profile"); p.set_defaults(fn=cmd_capture)
     p = sub.add_parser("profile", help="switch profile"); p.add_argument("name"); p.set_defaults(fn=cmd_profile)
     p = sub.add_parser("mode", help="switch M mode"); p.add_argument("mode", type=int, choices=(1, 2, 3)); p.set_defaults(fn=cmd_mode)
     p = sub.add_parser("backlight", help="set backlight colour until next profile change")

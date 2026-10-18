@@ -16,10 +16,13 @@ class PageContext(Protocol):
     mode: int
     recording: bool
     connected: bool
+    focused_app: str
+    locked_profile: str
 
     def set_mode(self, mode: int) -> None: ...
     def cycle_profile(self, delta: int) -> None: ...
     def set_profile(self, name: str) -> None: ...
+    def set_locked_profile(self, name: str) -> None: ...
 
 
 class Page:

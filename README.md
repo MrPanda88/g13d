@@ -99,6 +99,25 @@ four LCD keys select M1/M2/M3 and the next profile, on the media page they drive
 down, activate) for itself while it is shown. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
 to physical positions, your keyboard layout is applied by the compositor as usual.
 
+## Per-application profiles
+
+A profile can be linked to an application: when that application has the focus the G13 switches to
+the profile, and goes back to the profile you had chosen when it loses it (alt-tab included). Set it
+from the profile's right-click menu → *Application…*: type a rule (window class, app id or process
+name, `*` allowed, e.g. `steam_app_*`), pick one of the open windows, or press *Capture*, switch to
+the application and press **LCD 3** under the screen. `g13ctl apps` lists what the desktop reports,
+`g13ctl capture PROFILE` starts a capture, `auto_profiles = false` in `config.toml` turns the whole
+thing off.
+
+A **locked** profile (right-click → *Lock*, `g13ctl lock NAME`, or LCD 4 on the profiles page) is
+activated and kept whatever the focused application; one profile at most is locked, switching to
+another profile by hand releases the lock.
+
+Wayland does not let a program see the focused window, so this needs a tiny **GNOME Shell
+extension** shipped with g13d: `make install-extension`, then log out and back in once. `g13ctl
+status` says whether focus tracking is active. Other desktops can provide the same D-Bus interface
+(`org.g13d.Shell` at `/org/g13d/Shell`, see `g13d/data/gnome-shell/`).
+
 ## Macros
 
 One TOML file per macro in `~/.config/g13d/macros/`, bound with `{ macro = "name" }`:
@@ -143,8 +162,9 @@ switched live from the menu (☰ → Layout):
 
 In both:
 
-- **Profiles**: click one to activate it on the device; right-click (or the pencil button in the
-  GTK sidebar) for rename / duplicate / icon / default / delete; the star marks the profile
+- **Profiles**: + creates one, based on the default profile when there is one (or any profile you
+  pick, or empty); drag to reorder (the LCD and `g13ctl` follow); click one to activate it on the
+  device; right-click (or the pencil button in the GTK sidebar) for rename / duplicate / icon / default / delete; the star marks the profile
   loaded at startup. The GUI follows profile and mode switches made on the G13.
 - **Keys**: pick M1/M2/M3, click a key, choose what it does (or right-click it: Edit… / Unassign;
   the editor has an Unassign button too). Keys are learned by pressing them (Esc included). A key
@@ -168,6 +188,7 @@ make. Macros are listed from `macros/` directly.
 ```
 g13ctl status | profiles | profile NAME | mode 1..3 | backlight R G B | macros | macro-run NAME | macro-stop
 g13ctl lcd-page NAME|next|prev | lcd-text "message" [-s 5]  (-s 0: persistent text page) | reload | watch | diagnose
+g13ctl apps | capture PROFILE | lock [PROFILE]       (per-application profiles)
 ```
 
 ## D-Bus

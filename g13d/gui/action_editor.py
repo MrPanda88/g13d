@@ -20,10 +20,12 @@ TYPES = [("none", "Nothing"), ("key", "Keyboard key"), ("combo", "Key combinatio
 
 class ActionEditor(Adw.Dialog):
     def __init__(self, control: str, action: Action, macros: list[str], profiles: list[str], pages: list[str],
-                 on_save: Callable[[Action], None], on_unassign: Callable[[], None] | None = None):
+                 on_save: Callable[[Action, str], None], on_unassign: Callable[[], None] | None = None, label: str = ""):
+        """on_save(action, name): name is what the assignment is called in the library ("" = automatic)."""
         super().__init__(title=control, content_width=480)
         self._on_save = on_save
         self._on_unassign = on_unassign
+        self._initial = (action, label)
         self._macros, self._profiles = macros, profiles
         self._pages = ["next", "prev"] + [p for p in pages if p not in ("next", "prev")]
         self._keys: list[str] = list(action.keys)
@@ -48,6 +50,8 @@ class ActionEditor(Adw.Dialog):
                        margin_start=18, margin_end=18)
         group = Adw.PreferencesGroup()
         page.append(group)
+        self._name_row = Adw.EntryRow(title="Name in the library (empty = automatic)", text=label)
+        group.add(self._name_row)
         self._type = Adw.ComboRow(title="Action", model=Gtk.StringList.new([t[1] for t in TYPES]))
         self._type.set_selected(next(i for i, t in enumerate(TYPES) if t[0] == action.type))
         self._type.connect("notify::selected", lambda *_: self._show_type())
@@ -197,5 +201,8 @@ class ActionEditor(Adw.Dialog):
                 action = Action.profile(self._profiles[self._profile.get_selected()]) if self._profiles else Action.none()
             case _:
                 action = Action.lcd_page(self._pages[self._page.get_selected()])
-        self._on_save(action)
+        name = self._name_row.get_text().strip()
+        if name == self._initial[1] and action != self._initial[0]:
+            name = ""        # the old entry's name must not be moved onto a different action
+        self._on_save(action, name)
         self.close()
