@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
+from pathlib import Path
 
 from g13d import __version__
 from g13d.config.loader import ConfigStore
@@ -19,6 +19,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--tab", choices=("keys", "stick", "lcd", "macros"), help="tab to show at startup")
     ap.add_argument("--edit", metavar="CONTROL", help="open the action editor for a control at startup (debug)")
     ap.add_argument("--mode", type=int, choices=(1, 2, 3), help="M mode to show in the Keys tab at startup (debug)")
+    ap.add_argument("--layout", choices=("classic", "device"), help="window layout for this run (the menu sets the default)")
+    ap.add_argument("--size", metavar="WxH", help="initial window size, e.g. 900x600 (debug)")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--version", action="version", version=f"g13-gui {__version__}")
     args = ap.parse_args(argv)
@@ -35,7 +37,7 @@ def main(argv: list[str] | None = None) -> None:
     from .client import DaemonClient
     from .window import MainWindow, about_dialog
 
-    store = ConfigStore(root=args.config_dir and os.path.abspath(args.config_dir) or None)
+    store = ConfigStore(root=Path(args.config_dir).resolve() if args.config_dir else None)
     store.ensure_defaults()
 
     # single instance for users; debug screenshots must not just wake an already open window
@@ -48,8 +50,12 @@ def main(argv: list[str] | None = None) -> None:
             state["win"].present()
             return
         client = DaemonClient()
-        win = MainWindow(application, client, store)
+        win = MainWindow(application, client, store, layout=args.layout)
         state["win"] = win
+        layout_action.set_state(GLib.Variant("s", win.layout))
+        if args.size:
+            w, h = (int(v) for v in args.size.lower().split("x"))
+            win.set_default_size(w, h)
         if args.tab:
             win.show_tab(args.tab)
         if args.mode:
@@ -65,6 +71,14 @@ def main(argv: list[str] | None = None) -> None:
         a.connect("activate", lambda *_: cb())
         app.add_action(a)
 
+    layout_action = Gio.SimpleAction.new_stateful("layout", GLib.VariantType("s"), GLib.Variant("s", "classic"))
+
+    def on_layout(action, value):
+        action.set_state(value)
+        if "win" in state:
+            state["win"].set_layout(value.get_string())
+    layout_action.connect("change-state", on_layout)
+    app.add_action(layout_action)
     add_action("reload", lambda: state["win"].reload_all())
     add_action("about", lambda: about_dialog(state["win"]))
     add_action("open-config", lambda: Gio.AppInfo.launch_default_for_uri(GLib.filename_to_uri(str(store.root), None), None))

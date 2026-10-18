@@ -1,0 +1,170 @@
+"""Left panel of the device layout: every known assignment and macro, draggable onto the keys."""
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+gi.require_version("Graphene", "1.0")
+from gi.repository import Adw, Gdk, Gio, Graphene, Gtk, Pango  # noqa: E402
+
+from g13d.config.library import ActionLibrary, LibraryEntry  # noqa: E402
+from g13d.config.model import Action  # noqa: E402
+
+from .dnd import make_action_source  # noqa: E402
+from .keymap import action_label  # noqa: E402
+
+ICONS = {"key": "input-keyboard-symbolic", "combo": "input-keyboard-symbolic", "macro": "media-record-symbolic",
+         "mouse": "input-mouse-symbolic", "mode": "view-refresh-symbolic", "profile": "user-info-symbolic",
+         "lcd_page": "video-display-symbolic"}
+
+
+class _Row(Gtk.ListBoxRow):
+    def __init__(self, action: Action, label: str, is_macro: bool):
+        super().__init__()
+        self.action = action
+        self.label = label
+        self.is_macro = is_macro
+        box = Gtk.Box(spacing=8, margin_start=8, margin_end=8, margin_top=6, margin_bottom=6)
+        box.append(Gtk.Image.new_from_icon_name(ICONS.get(action.type, "emblem-system-symbolic")))
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self._title = Gtk.Label(label=label, xalign=0, ellipsize=Pango.EllipsizeMode.END, use_markup=False)
+        self._sub = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, css_classes=["caption", "dim-label"], use_markup=False)
+        text.append(self._title)
+        text.append(self._sub)
+        box.append(text)
+        self.set_child(box)
+        self.refresh_labels()
+        make_action_source(self, lambda: self.action)
+
+    def refresh_labels(self) -> None:
+        """Subtitle: what the key prints with the current layout, when it differs from the entry's name."""
+        shown = action_label(self.action)
+        self._sub.set_label(shown)
+        self._sub.set_visible(not self.is_macro and shown != self.label)
+
+
+class LibraryPanel(Gtk.Box):
+    """Callbacks: on_add() opens the action editor for a new entry; on_edit(entry), on_rename(entry, label),
+    on_remove(entry) edit the library; on_library_changed() saves it."""
+
+    def __init__(self, on_add: Callable[[], None], on_edit: Callable[[LibraryEntry], None],
+                 on_rename: Callable[[LibraryEntry, str], None], on_remove: Callable[[LibraryEntry], None]):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self._on_edit, self._on_rename, self._on_remove = on_edit, on_rename, on_remove
+        self._library = ActionLibrary()
+        self._macros: list[str] = []
+
+        self._search = Gtk.SearchEntry(placeholder_text="Search assignments", margin_start=6, margin_end=6, margin_top=6,
+                                       margin_bottom=6)
+        self._search.connect("search-changed", lambda *_: self._list.invalidate_filter())
+        self.append(self._search)
+        self._list = Gtk.ListBox(css_classes=["navigation-sidebar"], selection_mode=Gtk.SelectionMode.NONE, vexpand=True)
+        self._list.set_filter_func(self._filter)
+        self._list.set_header_func(self._header)
+        self.append(Gtk.ScrolledWindow(child=self._list, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER))
+        hint = Gtk.Label(label="Drag an assignment onto a key of the G13.", css_classes=["dim-label", "caption"], wrap=True,
+                         margin_start=8, margin_end=8, margin_bottom=4, justify=Gtk.Justification.CENTER)
+        self.append(hint)
+        bar = Gtk.Box(spacing=4, margin_start=6, margin_end=6, margin_top=2, margin_bottom=6)
+        add = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="New assignment", css_classes=["flat"])
+        add.connect("clicked", lambda *_: on_add())
+        bar.append(add)
+        self.append(bar)
+
+        # right-click menu on entries
+        self._menu_row: _Row | None = None
+        self._popover = Gtk.PopoverMenu.new_from_model(self._menu_model())
+        self._popover.set_parent(self)          # not the list: its rows are replaced on every refresh
+        self._popover.set_has_arrow(False)
+        click = Gtk.GestureClick(button=3)
+        click.connect("pressed", self._on_right_click)
+        self._list.add_controller(click)
+        group = Gio.SimpleActionGroup()
+        for name, cb in (("edit", self._menu_edit), ("rename", self._menu_rename), ("remove", self._menu_remove)):
+            a = Gio.SimpleAction.new(name, None)
+            a.connect("activate", lambda _a, _p, f=cb: f())
+            group.add_action(a)
+        self.insert_action_group("entry", group)
+
+    # ---- data ---------------------------------------------------------------------
+    def set_library(self, library: ActionLibrary, macros: list[str]) -> None:
+        self._library, self._macros = library, sorted(macros)
+        while (row := self._list.get_row_at_index(0)) is not None:
+            self._list.remove(row)
+        for name in self._macros:
+            self._list.append(_Row(Action.macro(name), name, True))
+        for e in library.entries:
+            self._list.append(_Row(e.action, e.label, False))
+
+    def refresh_labels(self) -> None:
+        i = 0
+        while (row := self._list.get_row_at_index(i)) is not None:
+            row.refresh_labels()
+            i += 1
+
+    # ---- list cosmetics ------------------------------------------------------------
+    def _filter(self, row: _Row) -> bool:
+        q = self._search.get_text().strip().lower()
+        return not q or q in row.label.lower() or q in action_label(row.action).lower() or q in row.action.describe().lower()
+
+    def _header(self, row: _Row, before: _Row | None) -> None:
+        if before is None or before.is_macro != row.is_macro:
+            row.set_header(Gtk.Label(label="Macros" if row.is_macro else "Assignments", xalign=0, css_classes=["heading"],
+                                     margin_start=10, margin_top=10, margin_bottom=4))
+        else:
+            row.set_header(None)
+
+    # ---- context menu ------------------------------------------------------------
+    @staticmethod
+    def _menu_model() -> Gio.Menu:
+        m = Gio.Menu()
+        m.append("Edit…", "entry.edit")
+        m.append("Rename…", "entry.rename")
+        m.append("Remove", "entry.remove")
+        return m
+
+    def _on_right_click(self, _g, _n, x, y) -> None:
+        row = self._list.get_row_at_y(int(y))
+        if row is None or row.is_macro:
+            return
+        self._menu_row = row
+        ok, p = self._list.compute_point(self, Graphene.Point().init(x, y))
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(p.x if ok else x), int(p.y if ok else y), 1, 1
+        self._popover.set_pointing_to(rect)
+        self._popover.popup()
+
+    def _entry(self) -> LibraryEntry | None:
+        return self._library.find(self._menu_row.action) if self._menu_row is not None else None
+
+    def _menu_edit(self) -> None:
+        if (e := self._entry()) is not None:
+            self._on_edit(e)
+
+    def _menu_rename(self) -> None:
+        if (e := self._entry()) is None:
+            return
+        dlg = Adw.AlertDialog(heading="Rename assignment")
+        entry = Gtk.Entry(text=e.label, activates_default=True)
+        dlg.set_extra_child(entry)
+        dlg.add_response("cancel", "Cancel")
+        dlg.add_response("ok", "OK")
+        dlg.set_default_response("ok")
+        dlg.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
+        dlg.connect("response", lambda _d, r: r == "ok" and self._on_rename(e, entry.get_text()))
+        dlg.present(self.get_root())
+
+    def _menu_remove(self) -> None:
+        if (e := self._entry()) is None:
+            return
+        dlg = Adw.AlertDialog(heading=f"Remove “{e.label}” from the library?",
+                              body="Keys that use it keep their assignment.")
+        dlg.add_response("cancel", "Cancel")
+        dlg.add_response("remove", "Remove")
+        dlg.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        dlg.connect("response", lambda _d, r: r == "remove" and self._on_remove(e))
+        dlg.present(self.get_root())
+

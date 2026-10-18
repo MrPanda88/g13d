@@ -126,12 +126,24 @@ half-way. Keys still held when a macro ends or is stopped are released automatic
 
 ## GUI
 
-`g13-gui` (also "G13 Configuration" in the app grid) is a GTK4/libadwaita app:
+`g13-gui` (also "G13 Configuration" in the app grid) is a GTK4/libadwaita app with two layouts,
+switched live from the menu (☰ → Layout):
 
-- **Profiles**: create, duplicate, rename, delete; click one to activate it on the device; the star
-  marks the profile loaded at startup. The GUI follows profile and mode switches made on the G13.
-- **Keys**: a picture of the G13; pick M1/M2/M3, click a key, choose what it does. Keys are learned by
-  pressing them (Esc included), so labels follow your real layout. Keys light up when pressed on the device.
+- **Classic**: profiles in a sidebar, a schematic keypad in the Keys tab.
+- **Device picture**: the photo of the G13 with every key clickable; an *Assignments* panel on the
+  left listing every known assignment and macro (drag one onto a key to bind it, right-click to
+  rename / edit / remove, + to add one); profile tiles along the bottom. Key legends take the backlight
+  colour of the profile and the assignment floats above each key. When the stick is not in *keys*
+  mode its four directions show the mode instead and send you to the Stick tab.
+
+In both:
+
+- **Profiles**: click one to activate it on the device; right-click (or the pencil button in the
+  classic sidebar) for rename / duplicate / icon / default / delete; the star marks the profile
+  loaded at startup. The GUI follows profile and mode switches made on the G13.
+- **Keys**: pick M1/M2/M3, click a key, choose what it does. Keys are learned by pressing them
+  (Esc included). A key shows the name of its assignment (as listed in the library); its tooltip
+  shows what the key prints with your real layout. Keys light up when pressed on the device.
 - **Stick**: keys / pointer / scroll / passthrough, dead zone, speeds.
 - **LCD & Light**: backlight colour (live), LCD pages on/off and order (drag or arrows), preview
   rendered with the daemon's code and your backlight colour.
@@ -140,7 +152,9 @@ half-way. Keys still held when a macro ends or is stopped are released automatic
   drag to reorder, play on the device.
 
 Every change is saved immediately and the daemon reloads it. Profiles are plain TOML, so the GUI
-and a text editor can be mixed freely.
+and a text editor can be mixed freely. The assignment library lives in `~/.config/g13d/actions.toml`
+(label → action); it is seeded from the bindings of your profiles and grows with every binding you
+make. Macros are listed from `macros/` directly.
 
 ## CLI
 

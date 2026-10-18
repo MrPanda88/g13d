@@ -175,6 +175,9 @@ class MacrosPage(Gtk.Box):
     def attach_window_controller(self, window: Gtk.Window) -> None:
         window.add_controller(self._key_ctl)
 
+    def detach_window_controller(self, window: Gtk.Window) -> None:
+        window.remove_controller(self._key_ctl)
+
     # ---- list management --------------------------------------------------------
     def reload(self) -> None:
         self._macros = self._store.load_macros()
