@@ -71,7 +71,7 @@ class ClockPage(Page):
             f = font(8, bold=False)
             for h, label in ((0, "12"), (3, "3"), (6, "6"), (9, "9")):
                 x, y = _polar(CX, CY, R - 5, h * 30)
-                draw.text((x - draw.textlength(label, font=f) / 2, y - 5), label, font=f, fill=1)
+                draw.text((x - draw.textlength(label, font=f) / 2, y - 3), label, font=f, fill=1)
         hour = (lt.tm_hour % 12 + lt.tm_min / 60) * 30
         minute = (lt.tm_min + lt.tm_sec / 60) * 6
         second = lt.tm_sec * 6
@@ -113,15 +113,22 @@ class ClockPage(Page):
 
     @staticmethod
     def _bars(draw, lt) -> None:
-        """Three level meters: hour of the day, minute, second."""
-        f = font(8, bold=False)
-        for i, (label, ratio) in enumerate((("H", (lt.tm_hour + lt.tm_min / 60) / 24), ("M", lt.tm_min / 60), ("S", lt.tm_sec / 60))):
-            y = 3 + i * 14
-            draw.text((1, y - 1), label, font=f, fill=1)
-            draw.rectangle((9, y, 2 * CX, y + 9), outline=1)
-            w = round(ratio * (2 * CX - 9 - 3))
+        """Three gauges (day, hour, minute): the percentage in plain digits with a thin level line under it.
+        Digits and fill never overlap: inverted or thickened digits turn to mush on the real panel."""
+        label_font, pct_font = font(13), font(11, bold=False)
+        rows = (("H", (lt.tm_hour + lt.tm_min / 60) / 24), ("M", (lt.tm_min + lt.tm_sec / 60) / 60), ("S", lt.tm_sec / 60))
+        x0, x1 = 10, 2 * CX
+        for i, (label, ratio) in enumerate(rows):
+            y = i * 14
+            top, bottom = draw.textbbox((0, 0), label, font=label_font)[1::2]
+            draw.text((0, y + (13 - (bottom - top)) / 2 - top), label, font=label_font, fill=1)
+            pct = f"{round(ratio * 100)}%"
+            draw.text((x1 - draw.textlength(pct, font=pct_font), y - 2), pct, font=pct_font, fill=1)
+            # level gauge: 4 px tall, outlined, a 2 px fill growing from the left
+            draw.rectangle((x0, y + 9, x1, y + 12), outline=1)
+            w = round(ratio * (x1 - x0 - 2))
             if w > 0:
-                draw.rectangle((11, y + 2, 11 + w, y + 7), fill=1)
+                draw.rectangle((x0 + 1, y + 10, x0 + 1 + w, y + 11), fill=1)
 
     @staticmethod
     def _binary(draw, lt) -> None:
