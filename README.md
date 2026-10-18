@@ -7,12 +7,12 @@ So I tried a shot in the dark with Claude and this is just beyond my expectation
 --
 
 It's 100% claude-coded, I only provided ideas and did the testing.  
+It took a bit of time but this is a good V1 (honestly a couple of hours).  
 I pushed claude.md and other confs on purpose.  
-It took a bit of time but this is a good V1.  
 Feel free to fork it and use it as a base to adapt it to your needs.  
-I may also read issues and consider requests even tho I won't be the one doing it obviously.  
+I may also read issues and consider requests even if I won't be the one doing it obviously.  
 
-I have plans for a few updates, mostly QoL as every features logitech gaming software was providing is already there.
+I have plans for a few updates, mostly QoL as almost every features logitech gaming software was providing is already there.
 
 # g13d — Logitech G13 on Linux, natively
 
