@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Turn image/g13_template.jpeg (a photo on a fake checkerboard) into g13d/data/g13.png with real alpha.
+"""Turn image/g13_naked_template.jpeg (a photo on a fake checkerboard, key legends already removed)
+into g13d/data/g13.png with real alpha.
 
 The checkerboard is removed by flood-filling light, unsaturated pixels that are connected to the
-image border, so bright parts of the device itself (bezel, key legends) are kept. The printed
-G1..G22 legends are then painted over with the colour of their key cap: the GUI draws its own,
-tinted like the backlight.
+image border, so bright parts of the device itself (bezel) are kept. The GUI draws the key legends
+itself, tinted like the backlight.
 """
 from __future__ import annotations
 
@@ -13,31 +13,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from g13d.gui import device_geometry as geo
-
-SRC = Path("image/g13_template.jpeg")
+SRC = Path("image/g13_naked_template.jpeg")
 DST = Path("g13d/data/g13.png")
-
-
-def erase_legends(im: Image.Image) -> None:
-    """Paint the printed legend of every G key with the cap's own (dark) colour, softly blended."""
-    W, H = im.size
-    px = im.load()
-    for x, y, w, h in geo.KEYS.values():
-        x0, y0, x1, y1 = int(x * W), int(y * H), int((x + w) * W), int((y + h) * H)
-        # cap colour: median of the darker pixels of the cap (legend pixels are the bright ones)
-        samples = sorted(px[i, j][:3] for i in range(x0, x1, 2) for j in range(y0, y1, 2) if max(px[i, j][:3]) < 120)
-        if not samples:
-            continue
-        r, g, b = samples[len(samples) // 2]
-        # the legend sits in the middle of the cap; cover that area, feather the edge
-        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-        pw, ph = (x1 - x0) * 0.8, (y1 - y0) * 0.6
-        patch = Image.new("RGBA", (int(pw) + 8, int(ph) + 8), (r, g, b, 0))
-        d = ImageDraw.Draw(patch)
-        d.rounded_rectangle((4, 4, pw + 4, ph + 4), radius=6, fill=(r, g, b, 255))
-        patch = patch.filter(ImageFilter.GaussianBlur(1.5))
-        im.alpha_composite(patch, (int(cx - patch.width / 2), int(cy - patch.height / 2)))
 
 
 def main() -> None:
@@ -72,7 +49,6 @@ def main() -> None:
     # crop to the opaque content (keeps the PNG small and the geometry simple)
     bbox = alpha.point(lambda v: 255 if v > 8 else 0).getbbox()
     out = out.crop(bbox)
-    erase_legends(out)
     dst.parent.mkdir(parents=True, exist_ok=True)
     out.save(dst, optimize=True)
     print(f"{dst}: {out.size[0]}x{out.size[1]} (crop box {bbox})")

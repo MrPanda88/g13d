@@ -1,8 +1,8 @@
 """Main window. Two layouts, switched live from the menu:
 
-- classic: profile sidebar on the left, Keys / Stick / LCD & Light / Macros tabs, schematic keypad
-- device:  assignment library on the left, the photo of the G13 with drag-and-drop targets, profile tiles
-           along the bottom
+- gtk: profile sidebar on the left, Keys / Stick / LCD & Light / Macros tabs, schematic keypad
+- lgs: assignment library on the left, the photo of the G13 with drag-and-drop targets, profile tiles
+       along the bottom (after Logitech Gaming Software)
 """
 from __future__ import annotations
 
@@ -147,9 +147,9 @@ class MainWindow(Adw.ApplicationWindow):
         self._macros.attach_window_controller(self)
         self._library_panel: LibraryPanel | None = None
 
-        if self._layout == "device":
+        if self._layout == "lgs":
             self._keys = DevicePage(self._edit_control, self._mode_selected, self._drop_action,
-                                    lambda: self.show_tab("stick"), self._label_for)
+                                    lambda: self.show_tab("stick"), self._label_for, self._unassign)
             keys_widget: Gtk.Widget = self._keys
             self._profiles_ui = ProfilesBar(self._profile_picked, self._profile_command)
             content.add_bottom_bar(self._profiles_ui)
@@ -166,7 +166,7 @@ class MainWindow(Adw.ApplicationWindow):
             header.pack_start(toggle)
             root: Gtk.Widget = split
         else:
-            self._keys = KeysPage(self._edit_control, self._mode_selected, self._drop_action, self._label_for)
+            self._keys = KeysPage(self._edit_control, self._mode_selected, self._drop_action, self._label_for, self._unassign)
             keys_widget = Gtk.ScrolledWindow(child=self._keys, hscrollbar_policy=Gtk.PolicyType.AUTOMATIC)
             self._profiles_ui = ProfilesSidebar(self._profile_picked, self._profile_command)
             nav = Adw.NavigationSplitView(min_sidebar_width=200, max_sidebar_width=260)
@@ -193,8 +193,8 @@ class MainWindow(Adw.ApplicationWindow):
         from gi.repository import Gio
         menu = Gio.Menu()
         layout = Gio.Menu()
-        layout.append("Classic", "app.layout::classic")
-        layout.append("Device picture", "app.layout::device")
+        layout.append("GTK", "app.layout::gtk")
+        layout.append("LGS", "app.layout::lgs")
         menu.append_submenu("Layout", layout)
         menu.append("Reload configuration", "app.reload")
         menu.append("Open configuration folder", "app.open-config")
@@ -376,18 +376,25 @@ class MainWindow(Adw.ApplicationWindow):
     def edit_control(self, control: str) -> None:
         self._edit_control(control)
 
-    def _editor(self, title: str, action: Action, on_save) -> ActionEditor:
+    def _editor(self, title: str, action: Action, on_save, on_unassign=None) -> ActionEditor:
         pages = self._client.available_pages or ["status", "clock", "system", "media", "text", "blank"]
         macros = sorted(self._store.load_macros())
-        return ActionEditor(title, action, macros, sorted(self._profiles), pages, on_save)
+        return ActionEditor(title, action, macros, sorted(self._profiles), pages, on_save, on_unassign)
 
     def _edit_control(self, control: str) -> None:
         if self._profile is None:
             return
+        action = self._profile.binding(self._mode, control)
 
         def on_save(new: Action) -> None:
             self._assign(control, new)
-        self._editor(control, self._profile.binding(self._mode, control), on_save).present(self)
+        self._editor(control, action, on_save, (lambda: self._unassign(control)) if action.type != "none" else None).present(self)
+
+    def _unassign(self, control: str) -> None:
+        if self._profile is None or self._profile.binding(self._mode, control).type == "none":
+            return
+        self._assign(control, Action.none())
+        self.toast(f"{control} unassigned (M{self._mode})")
 
     def _assign(self, control: str, action: Action) -> None:
         assert self._profile is not None

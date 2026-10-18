@@ -20,9 +20,10 @@ TYPES = [("none", "Nothing"), ("key", "Keyboard key"), ("combo", "Key combinatio
 
 class ActionEditor(Adw.Dialog):
     def __init__(self, control: str, action: Action, macros: list[str], profiles: list[str], pages: list[str],
-                 on_save: Callable[[Action], None]):
+                 on_save: Callable[[Action], None], on_unassign: Callable[[], None] | None = None):
         super().__init__(title=control, content_width=480)
         self._on_save = on_save
+        self._on_unassign = on_unassign
         self._macros, self._profiles = macros, profiles
         self._pages = ["next", "prev"] + [p for p in pages if p not in ("next", "prev")]
         self._keys: list[str] = list(action.keys)
@@ -37,6 +38,10 @@ class ActionEditor(Adw.Dialog):
         save.connect("clicked", self._save)
         header.pack_start(cancel)
         header.pack_end(save)
+        if on_unassign is not None:
+            unassign = Gtk.Button(label="Unassign", css_classes=["destructive-action"], tooltip_text="Make this key do nothing")
+            unassign.connect("clicked", lambda *_: (self.close(), on_unassign()))
+            header.pack_end(unassign)
         view.add_top_bar(header)
 
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, margin_top=12, margin_bottom=18,

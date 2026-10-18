@@ -12,7 +12,8 @@ BINDABLE = G_KEYS + LCD_KEYS + STICK_DIRS + STICK_BUTTONS + ("LIGHT",)
 MODES = (1, 2, 3)
 STICK_MODES = ("keys", "mouse", "scroll", "passthrough")
 ACTION_TYPES = ("none", "key", "combo", "macro", "mouse", "mode", "profile", "lcd_page")
-GUI_LAYOUTS = ("classic", "device")
+GUI_LAYOUTS = ("gtk", "lgs")
+_LAYOUT_ALIASES = {"classic": "gtk", "device": "lgs"}
 
 
 class ConfigError(ValueError):
@@ -272,23 +273,24 @@ class Settings:
     """Global daemon settings (~/.config/g13d/config.toml).
 
     default_profile: profile loaded when the daemon starts; empty = restore the last used one.
-    gui_layout: how g13-gui arranges its window ([gui] layout): "classic" or "device".
+    gui_layout: how g13-gui arranges its window ([gui] layout): "gtk" (classic widgets) or "lgs" (device picture).
     """
     default_profile: str = ""
     lcd_enabled: bool = True
     log_level: str = "INFO"
-    gui_layout: str = "classic"
+    gui_layout: str = "gtk"
 
     @classmethod
     def from_toml(cls, d: dict) -> Settings:
         g = d.get("general", d) or {}
         gui = d.get("gui", {}) or {}
-        layout = str(gui.get("layout", "classic"))
+        layout = str(gui.get("layout", "gtk"))
+        layout = _LAYOUT_ALIASES.get(layout, layout)
         return cls(
             default_profile=str(g.get("default_profile", "")),
             lcd_enabled=bool(g.get("lcd_enabled", True)),
             log_level=str(g.get("log_level", "INFO")).upper(),
-            gui_layout=layout if layout in GUI_LAYOUTS else "classic",
+            gui_layout=layout if layout in GUI_LAYOUTS else "gtk",
         )
 
     def to_toml(self) -> dict:

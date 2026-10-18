@@ -13,6 +13,7 @@ from g13d.config.model import Action, Profile  # noqa: E402
 
 from .dnd import make_action_target  # noqa: E402
 from .keymap import action_label  # noqa: E402
+from .widgets import attach_key_menu  # noqa: E402
 
 # (control, column, row, colspan) on a 14-column grid (one key = 2 columns, rows offset by 1 column)
 _LAYOUT: list[tuple[str, int, int, int]] = []
@@ -34,11 +35,15 @@ _LCD_TITLES = {"LCD_MENU": "●", "LCD1": "LCD 1", "LCD2": "LCD 2", "LCD3": "LCD
 
 class KeyButton(Gtk.Button):
     def __init__(self, control: str, title: str, on_click: Callable[[str], None], chars: int = 5,
-                 on_drop: Callable[[str, Action], bool] | None = None):
+                 on_drop: Callable[[str, Action], bool] | None = None,
+                 on_unassign: Callable[[str], None] | None = None):
         super().__init__()
         self.control = control
+        self._bound = False
         if on_drop is not None:
             make_action_target(self, lambda a: on_drop(control, a))
+        if on_unassign is not None:
+            attach_key_menu(self, lambda: on_click(control), lambda: on_unassign(control), lambda: self._bound)
         self.add_css_class("g13-key")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, valign=Gtk.Align.CENTER)
         self._title = Gtk.Label(label=title, css_classes=["caption", "dim-label"], ellipsize=3,
@@ -56,6 +61,7 @@ class KeyButton(Gtk.Button):
         self._action.set_label(label if label is not None else action_label(action))
         shown, plain = action_label(action), action.describe()
         self._action.set_tooltip_text(shown + (f" ({plain})" if plain != shown else ""))
+        self._bound = action.type != "none"
         if action.type == "none":
             self._action.add_css_class("dim-label")
             self.remove_css_class("g13-bound")
@@ -73,11 +79,13 @@ class KeyButton(Gtk.Button):
 class KeysPage(Gtk.Box):
     def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None],
                  on_drop: Callable[[str, Action], bool] | None = None,
-                 label_for: Callable[[Action], str] = action_label):
+                 label_for: Callable[[Action], str] = action_label,
+                 on_unassign: Callable[[str], None] | None = None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12, margin_bottom=12,
                          margin_start=12, margin_end=12)
         self._on_edit = on_edit
         self._on_drop = on_drop
+        self._on_unassign = on_unassign
         self._label_for = label_for
         self._buttons: dict[str, KeyButton] = {}
         self._profile: Profile | None = None
@@ -134,7 +142,7 @@ class KeysPage(Gtk.Box):
         self.append(Adw.Clamp(maximum_size=1100, tightening_threshold=900, child=frame))
 
     def _make(self, control: str, title: str, chars: int = 5) -> KeyButton:
-        b = KeyButton(control, title, self._on_edit, chars, self._on_drop)
+        b = KeyButton(control, title, self._on_edit, chars, self._on_drop, self._on_unassign)
         self._buttons[control] = b
         return b
 

@@ -7,7 +7,36 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, Gtk  # noqa: E402
+
+
+def attach_key_menu(button: Gtk.Widget, on_edit: Callable[[], None], on_unassign: Callable[[], None],
+                    has_action: Callable[[], bool]) -> None:
+    """Right-click on a key: Edit… / Unassign (the latter only when the key does something)."""
+    popover = Gtk.PopoverMenu(has_arrow=False)
+    popover.set_parent(button)
+    group = Gio.SimpleActionGroup()
+    edit = Gio.SimpleAction.new("edit", None)
+    edit.connect("activate", lambda *_: on_edit())
+    unassign = Gio.SimpleAction.new("unassign", None)
+    unassign.connect("activate", lambda *_: on_unassign())
+    group.add_action(edit)
+    group.add_action(unassign)
+    button.insert_action_group("key", group)
+    menu = Gio.Menu()
+    menu.append("Edit…", "key.edit")
+    menu.append("Unassign", "key.unassign")
+    popover.set_menu_model(menu)
+
+    def pressed(_g, _n, x, y):
+        unassign.set_enabled(has_action())
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
+        popover.set_pointing_to(rect)
+        popover.popup()
+    click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+    click.connect("pressed", pressed)
+    button.add_controller(click)
 
 
 class SliderRow(Adw.ActionRow):

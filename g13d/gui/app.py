@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--tab", choices=("keys", "stick", "lcd", "macros"), help="tab to show at startup")
     ap.add_argument("--edit", metavar="CONTROL", help="open the action editor for a control at startup (debug)")
     ap.add_argument("--mode", type=int, choices=(1, 2, 3), help="M mode to show in the Keys tab at startup (debug)")
-    ap.add_argument("--layout", choices=("classic", "device"), help="window layout for this run (the menu sets the default)")
+    ap.add_argument("--layout", choices=("gtk", "lgs"), help="window layout for this run (the menu sets the default)")
     ap.add_argument("--size", metavar="WxH", help="initial window size, e.g. 900x600 (debug)")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--version", action="version", version=f"g13-gui {__version__}")
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> None:
         a.connect("activate", lambda *_: cb())
         app.add_action(a)
 
-    layout_action = Gio.SimpleAction.new_stateful("layout", GLib.VariantType("s"), GLib.Variant("s", "classic"))
+    layout_action = Gio.SimpleAction.new_stateful("layout", GLib.VariantType("s"), GLib.Variant("s", "gtk"))
 
     def on_layout(action, value):
         action.set_state(value)

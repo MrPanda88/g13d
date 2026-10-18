@@ -83,8 +83,10 @@ def test_profile_icon_roundtrip():
 
 def test_settings_gui_layout():
     from g13d.config.model import Settings
-    assert Settings().gui_layout == "classic"
-    s = Settings.from_toml(tomllib.loads(tomlout.dumps(Settings(gui_layout="device").to_toml())))
-    assert s.gui_layout == "device"
-    assert Settings.from_toml({"gui": {"layout": "bogus"}}).gui_layout == "classic"
+    assert Settings().gui_layout == "gtk"
+    s = Settings.from_toml(tomllib.loads(tomlout.dumps(Settings(gui_layout="lgs").to_toml())))
+    assert s.gui_layout == "lgs"
+    assert Settings.from_toml({"gui": {"layout": "bogus"}}).gui_layout == "gtk"
+    assert Settings.from_toml({"gui": {"layout": "device"}}).gui_layout == "lgs"     # pre-1.1 names
+    assert Settings.from_toml({"gui": {"layout": "classic"}}).gui_layout == "gtk"
     assert Settings.from_toml({"general": {"default_profile": "x"}}).default_profile == "x"

@@ -14,13 +14,14 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
-from gi.repository import Gdk, Graphene, Gsk, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from g13d.config.model import STICK_DIRS, Action, Profile  # noqa: E402
 
 from . import device_geometry as geo  # noqa: E402
 from .dnd import make_action_target  # noqa: E402
 from .keymap import action_label  # noqa: E402
+from .widgets import attach_key_menu  # noqa: E402
 
 LabelFor = Callable[[Action], str]
 
@@ -45,9 +46,13 @@ def _attrs(px: float, rgb: tuple[int, int, int] | None = None, bold: bool = Fals
 class DeviceKey(Gtk.Button):
     """One control: the assignment pill floating above the cap, the cap legend tinted like the backlight."""
 
-    def __init__(self, control: str, on_click: Callable[[str], None], on_drop: Callable[[str, Action], bool]):
+    def __init__(self, control: str, on_click: Callable[[str], None], on_drop: Callable[[str, Action], bool],
+                 on_unassign: Callable[[str], None] | None = None):
         super().__init__(css_classes=["flat", "g13-device-key"], has_frame=False)
         self.control = control
+        if on_unassign is not None:
+            attach_key_menu(self, lambda: on_click(control), lambda: on_unassign(control),
+                            lambda: self.enabled and self._action.type != "none")
         self.rect = geo.ALL[control]
         self.enabled = True              # False: shown but neither droppable nor editable (stick not in keys mode)
         # where the assignment pill goes: above the cap (default), on the control, or detached (stick press)
@@ -159,14 +164,15 @@ class ModeKey(Gtk.Button):
 class DeviceView(Gtk.Widget):
     """Picture + overlays. Children are positioned by hand from device_geometry."""
 
-    def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None], on_drop: Callable[[str, Action], bool]):
+    def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None], on_drop: Callable[[str, Action], bool],
+                 on_unassign: Callable[[str], None] | None = None):
         super().__init__(hexpand=True, vexpand=True, overflow=Gtk.Overflow.HIDDEN)
         self._texture = Gdk.Texture.new_from_filename(str(files("g13d") / "data" / "g13.png"))
         self._scale = 1.0
         self.keys: dict[str, DeviceKey] = {}
         self.modes: dict[str, ModeKey] = {}
         for control in geo.ALL:
-            k = DeviceKey(control, on_edit, on_drop)
+            k = DeviceKey(control, on_edit, on_drop, on_unassign)
             k.set_parent(self)
             self.keys[control] = k
         self._press_pill = self.keys["STICK_PRESS"].detached_pill
@@ -242,7 +248,8 @@ class DeviceView(Gtk.Widget):
             pb = Gsk.PathBuilder()
             pb.move_to(x0, y0)
             pb.line_to(x1, y1)
-            color = self.get_color()
+            # the device is black: the accent colour shows on it in both the light and the dark theme
+            color = Adw.StyleManager.get_default().get_accent_color_rgba()
             snapshot.append_stroke(pb.to_path(), Gsk.Stroke.new(max(1.5, 2 * self._scale)), color)
         for child in list(self.keys.values()) + list(self.modes.values()) + [self._press_pill]:
             self.snapshot_child(child, snapshot)
@@ -253,7 +260,7 @@ class DevicePage(Gtk.Box):
 
     def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None],
                  on_drop: Callable[[str, Action], bool], on_stick_tab: Callable[[], None],
-                 label_for: LabelFor = action_label):
+                 label_for: LabelFor = action_label, on_unassign: Callable[[str], None] | None = None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6,
                          margin_start=6, margin_end=6)
         self._on_edit = on_edit
@@ -262,7 +269,7 @@ class DevicePage(Gtk.Box):
         self._profile: Profile | None = None
         self._mode = 1
         self._rgb: tuple[int, int, int] | None = None
-        self.view = DeviceView(self._clicked, on_mode, self._dropped)
+        self.view = DeviceView(self._clicked, on_mode, self._dropped, on_unassign)
         self._on_drop = on_drop
         self.append(self.view)
         self._hint = Gtk.Label(label="Click a key or drop an assignment on it. M1–M3 switch the mode shown.",
