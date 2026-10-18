@@ -70,3 +70,21 @@ def test_store_roundtrip(tmp_path):
     assert again["Gaming"].backlight == (255, 0, 0)
     store.save_state({"profile": "Gaming", "mode": 2})
     assert store.load_state() == {"profile": "Gaming", "mode": 2}
+
+
+def test_profile_icon_roundtrip():
+    p = Profile("p", icon="/tmp/x.png")
+    d = p.to_toml()
+    assert d["icon"] == "/tmp/x.png"
+    assert Profile.from_toml(tomllib.loads(tomlout.dumps(d))) == p
+    assert "icon" not in Profile("q").to_toml()
+    assert p.copy("r").icon == "/tmp/x.png"
+
+
+def test_settings_gui_layout():
+    from g13d.config.model import Settings
+    assert Settings().gui_layout == "classic"
+    s = Settings.from_toml(tomllib.loads(tomlout.dumps(Settings(gui_layout="device").to_toml())))
+    assert s.gui_layout == "device"
+    assert Settings.from_toml({"gui": {"layout": "bogus"}}).gui_layout == "classic"
+    assert Settings.from_toml({"general": {"default_profile": "x"}}).default_profile == "x"

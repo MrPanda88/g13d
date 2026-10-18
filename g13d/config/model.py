@@ -12,6 +12,7 @@ BINDABLE = G_KEYS + LCD_KEYS + STICK_DIRS + STICK_BUTTONS + ("LIGHT",)
 MODES = (1, 2, 3)
 STICK_MODES = ("keys", "mouse", "scroll", "passthrough")
 ACTION_TYPES = ("none", "key", "combo", "macro", "mouse", "mode", "profile", "lcd_page")
+GUI_LAYOUTS = ("classic", "device")
 
 
 class ConfigError(ValueError):
@@ -134,7 +135,7 @@ class Action:
             case "macro":
                 return f"⏵ {self.name}"
             case "mouse":
-                return {"BTN_LEFT": "Mouse L", "BTN_RIGHT": "Mouse R", "BTN_MIDDLE": "Mouse M"}.get(self.name, self.name)
+                return _short(self.name) if self.name in _labels() else "Mouse " + _short(self.name)
             case "mode":
                 return f"M{self.number}"
             case "profile":
@@ -144,10 +145,17 @@ class Action:
         return self.type
 
 
+def _labels() -> dict[str, str]:
+    from g13d.hw.names import KEY_LABELS  # local import: hw.names needs evdev, the model stays importable without it
+    return KEY_LABELS
+
+
 def _short(evdev_name: str) -> str:
+    if evdev_name in _labels():
+        return _labels()[evdev_name]
     for prefix in ("KEY_", "BTN_"):
         if evdev_name.startswith(prefix):
-            return evdev_name[len(prefix):].replace("LEFT", "L").replace("RIGHT", "R").title()
+            return evdev_name[len(prefix):].replace("_", " ").title()
     return evdev_name
 
 
@@ -191,6 +199,7 @@ Bindings = dict[str, Action]
 class Profile:
     name: str
     backlight: tuple[int, int, int] = (0, 0, 255)
+    icon: str = ""              # GUI only: image file path or themed icon name shown on the profile tile
     stick: StickConfig = field(default_factory=StickConfig)
     lcd_pages: list[str] = field(default_factory=lambda: ["status", "clock", "system"])
     modes: dict[int, Bindings] = field(default_factory=lambda: {m: {} for m in MODES})
@@ -229,6 +238,7 @@ class Profile:
         return cls(
             name=str(d.get("name", fallback_name)),
             backlight=backlight,  # type: ignore[arg-type]
+            icon=str(d.get("icon", "")),
             stick=StickConfig.from_toml(d.get("stick")),
             lcd_pages=[str(p) for p in lcd.get("pages", ["status", "clock", "system"])],
             modes=modes,
@@ -238,6 +248,7 @@ class Profile:
         out: dict = {
             "name": self.name,
             "backlight": list(self.backlight),
+            **({"icon": self.icon} if self.icon else {}),
             "stick": self.stick.to_toml(),
             "lcd": {"pages": list(self.lcd_pages)},
         }
@@ -261,21 +272,27 @@ class Settings:
     """Global daemon settings (~/.config/g13d/config.toml).
 
     default_profile: profile loaded when the daemon starts; empty = restore the last used one.
+    gui_layout: how g13-gui arranges its window ([gui] layout): "classic" or "device".
     """
     default_profile: str = ""
     lcd_enabled: bool = True
     log_level: str = "INFO"
+    gui_layout: str = "classic"
 
     @classmethod
     def from_toml(cls, d: dict) -> Settings:
         g = d.get("general", d) or {}
+        gui = d.get("gui", {}) or {}
+        layout = str(gui.get("layout", "classic"))
         return cls(
             default_profile=str(g.get("default_profile", "")),
             lcd_enabled=bool(g.get("lcd_enabled", True)),
             log_level=str(g.get("log_level", "INFO")).upper(),
+            gui_layout=layout if layout in GUI_LAYOUTS else "classic",
         )
 
     def to_toml(self) -> dict:
         return {"general": {"default_profile": self.default_profile,
                             "lcd_enabled": self.lcd_enabled,
-                            "log_level": self.log_level}}
+                            "log_level": self.log_level},
+                "gui": {"layout": self.gui_layout}}

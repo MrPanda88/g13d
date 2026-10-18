@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import tomlout
 from .defaults import default_profile
+from .library import ActionLibrary
 from .macro import EXAMPLE_MACRO_TOML, Macro
 from .model import ConfigError, Profile, Settings
 
@@ -104,6 +105,22 @@ class ConfigStore:
         if path.exists():
             path.unlink()
 
+
+    # ---- assignment library -------------------------------------------
+    def load_library(self) -> ActionLibrary:
+        p = self.root / "actions.toml"
+        if not p.exists():
+            return ActionLibrary()
+        try:
+            with p.open("rb") as f:
+                return ActionLibrary.from_toml(tomllib.load(f))
+        except (tomllib.TOMLDecodeError, ConfigError, OSError) as e:
+            log.error("ignoring %s: %s", p, e)
+            return ActionLibrary()
+
+    def save_library(self, lib: ActionLibrary) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        _atomic_write(self.root / "actions.toml", tomlout.dumps(lib.to_toml()))
 
     # ---- macros -------------------------------------------------------
     def load_macros(self) -> dict[str, Macro]:

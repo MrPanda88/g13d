@@ -48,3 +48,20 @@ def key_name(code: int) -> str:
     if isinstance(n, list):
         n = n[0]
     return n or f"KEY_{code}"
+
+# Short, layout-independent labels for the keys whose evdev name reads badly
+KEY_LABELS = {
+    "KEY_LEFTCTRL": "Ctrl", "KEY_RIGHTCTRL": "Ctrl R", "KEY_LEFTSHIFT": "Shift", "KEY_RIGHTSHIFT": "Shift R",
+    "KEY_LEFTALT": "Alt", "KEY_RIGHTALT": "AltGr", "KEY_LEFTMETA": "Super", "KEY_RIGHTMETA": "Super R",
+    "KEY_ENTER": "Enter", "KEY_KPENTER": "KP Enter", "KEY_SPACE": "Space", "KEY_TAB": "Tab", "KEY_ESC": "Esc",
+    "KEY_BACKSPACE": "Bksp", "KEY_DELETE": "Del", "KEY_INSERT": "Ins", "KEY_HOME": "Home", "KEY_END": "End",
+    "KEY_PAGEUP": "PgUp", "KEY_PAGEDOWN": "PgDn", "KEY_UP": "↑", "KEY_DOWN": "↓", "KEY_LEFT": "←", "KEY_RIGHT": "→",
+    "KEY_CAPSLOCK": "Caps", "KEY_NUMLOCK": "Num", "KEY_SCROLLLOCK": "Scroll", "KEY_PRINT": "PrtSc", "KEY_PAUSE": "Pause",
+    "KEY_COMPOSE": "Menu", "KEY_MUTE": "Mute", "KEY_VOLUMEUP": "Vol+", "KEY_VOLUMEDOWN": "Vol−",
+    "KEY_PLAYPAUSE": "Play", "KEY_NEXTSONG": "Next", "KEY_PREVIOUSSONG": "Prev", "KEY_STOPCD": "Stop",
+    "KEY_KP0": "KP 0", "KEY_KP1": "KP 1", "KEY_KP2": "KP 2", "KEY_KP3": "KP 3", "KEY_KP4": "KP 4", "KEY_KP5": "KP 5",
+    "KEY_KP6": "KP 6", "KEY_KP7": "KP 7", "KEY_KP8": "KP 8", "KEY_KP9": "KP 9", "KEY_KPDOT": "KP .", "KEY_KPCOMMA": "KP ,",
+    "KEY_KPPLUS": "KP +", "KEY_KPMINUS": "KP −", "KEY_KPASTERISK": "KP *", "KEY_KPSLASH": "KP /", "KEY_KPEQUAL": "KP =",
+    "BTN_LEFT": "Mouse L", "BTN_RIGHT": "Mouse R", "BTN_MIDDLE": "Mouse M", "BTN_SIDE": "Mouse 4", "BTN_EXTRA": "Mouse 5",
+    "BTN_FORWARD": "Mouse Fwd", "BTN_BACK": "Mouse Back", "BTN_TASK": "Mouse Task",
+}
