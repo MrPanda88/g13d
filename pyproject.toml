@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "g13d"
-version = "0.1.0"
+version = "1.1.0.dev0"
 description = "Native Linux daemon, CLI and GTK4 GUI for the Logitech G13 gameboard (on top of the kernel hid-lg-g15 driver)"
 readme = "README.md"
 license = "MIT"
