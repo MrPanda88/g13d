@@ -12,18 +12,35 @@ if TYPE_CHECKING:
 class PageContext(Protocol):
     """What pages may ask the daemon about / ask it to do."""
     profile_name: str
+    profile_names: list[str]
     mode: int
     recording: bool
     connected: bool
 
     def set_mode(self, mode: int) -> None: ...
     def cycle_profile(self, delta: int) -> None: ...
+    def set_profile(self, name: str) -> None: ...
 
 
 class Page:
-    """A screen. Subclasses draw with PIL into a 160x43 1-bit image (1 = lit pixel)."""
+    """A screen. Subclasses draw with PIL into a 160x43 1-bit image (1 = lit pixel).
+
+    Legibility rules (the panel has no anti-aliasing): text with font(11, bold=False) or bigger, bold only
+    from 13 px, rows at least 11 px apart with text drawn at y - 1, symbols drawn with primitives rather
+    than non-ASCII glyphs. Render with scripts/render_pages.py before shipping a page.
+    """
     name = "base"
     title = "Page"
+    # LCD buttons (1..4) this page takes for itself while shown, even if the key is bound
+    reserved_buttons: tuple[int, ...] = ()
+    # user-settable options: name -> (label, [(value, label), ...]); values live in Profile.lcd_options
+    options: dict[str, tuple[str, list[tuple[str, str]]]] = {}
+
+    def configure(self, options: dict[str, str]) -> None:
+        """Receive the profile's LCD options (all pages get the whole dict)."""
+
+    def shown(self, ctx: PageContext) -> None:
+        """Called when the page becomes the one on screen."""
 
     def attach(self) -> None:
         """Called when the page becomes part of the active page list (start tasks here)."""

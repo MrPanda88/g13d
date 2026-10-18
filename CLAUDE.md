@@ -26,7 +26,9 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 ## Architecture (Python package `g13d`)
 - `g13d/hw/`: device discovery (sysfs + pyudev), evdev reader with exclusive grab, LEDs (sysfs), LCD (hidraw)
 - `g13d/engine/`: actions → uinput virtual device, thumbstick, macro player and recorder
-- `g13d/lcd/`: framebuffer encoding, pages, screen manager, MPRIS watcher
+- `g13d/lcd/`: framebuffer encoding, pages, screen manager, MPRIS watcher. Pages may declare `reserved_buttons`
+  (LCD keys they take even when bound, e.g. the profiles page) and `options` (global settings stored in config.toml
+  `[lcd] options`, e.g. `clock_style`); `Page.shown(ctx)` runs when a page comes on screen
 - `g13d/daemon/`: asyncio main loop, D-Bus service `org.g13d`
 - `g13d/gui/`: GTK4/libadwaita app `g13-gui`; `g13d/cli/`: `g13ctl`
   - two layouts built by `window.py:_build()` and switched live (`[gui] layout` in config.toml, menu ☰ → Layout):
@@ -37,8 +39,10 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   - `data/g13.png` is generated from `image/g13_naked_template.jpeg` (user-supplied, legends already removed) by
     `scripts/make_device_image.py` (checkerboard keyed out); `scripts/check_geometry.py OUT.png` overlays the rects
 - `g13d/data/`: udev rule, systemd unit, desktop entry, device picture
-- User config: `~/.config/g13d/config.toml`, `profiles/*.toml`, `macros/*.toml`, `actions.toml` (assignment
-  library, `config/library.py`, seeded from the profiles' bindings and fed by every binding made in the GUI)
+- User config: `~/.config/g13d/config.toml` (settings incl. the global `[lcd]` pages/options and `[gui]`),
+  `profiles/*.toml` (backlight, stick, bindings; `[lcd]` in old profiles is read once for migration), `macros/*.toml`,
+  `actions.toml` (assignment library, `config/library.py`, seeded from the profiles' bindings and fed by every binding
+  made in the GUI)
 
 ## Progress
 - M0 hardware validation: done (2026-10-17)
@@ -48,7 +52,9 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - M4 GTK4/Adw GUI (`g13d/gui/`): done, test feedback integrated (2026-10-17)
 - M5 validated by hand (hotplug, suspend/resume) and M6 done (2026-10-17). Published on GitHub (private) 2026-10-18
 - v1.0.0 released 2026-10-18 from branch `release-1.0` (last commit before the LGS layout); main is 1.1.0.dev0
-- M7 "LGS" layout (photo, assignment library with drag-and-drop, profile tiles, quick unassign), 2026-10-18
+- M7 "LGS" layout (photo, assignment library with drag-and-drop, profile tiles, quick unassign), 2026-10-18 → v1.1.0
+- M8 LCD: analog clock with dial styles (incl. exotic ones), profiles page (LCD1–3 reserved), colour picker (wheel +
+  RGB + presets), LCD pages global instead of per profile, library sort, LGS side panels only on Keys, 2026-10-18
 
 ## Useful commands
 - Tests: `make test` (pytest, no hardware needed)
@@ -73,6 +79,11 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   is the right-click menu on keys (`widgets.attach_key_menu`: Edit… / Unassign)
 - Short key names (`hw/names.py:KEY_LABELS`) are shared by `Action.describe()` (library labels, layout-agnostic) and
   `keymap.key_label()` (layout-aware); keep both in sync when adding keys
+- **LCD legibility** (1-bit panel, no anti-aliasing): body text uses `font(11, bold=False)` or larger; bold only from
+  13 px up; never below 10 px except single glyphs. Rows are ≥ 11 px apart, text drawn at `y - 1` inside its row,
+  and nothing overlaps an inverted (selected) row. Glyphs outside ASCII may be missing from the font: draw symbols
+  (arrows, triangles, check marks) with primitives. Check every new or changed page with `scripts/render_pages.py`
+  before showing it; the status page is the reference look
 - `use_markup=False` on every Adw.*Row that shows a key name (`&` and `<` break Pango markup)
 - Python ≥ 3.12; dependencies: `evdev`, `dbus-next`, `Pillow`, `pyudev`, `psutil`, `PyGObject` (GUI). Full list in
   `pyproject.toml` and `README.md`

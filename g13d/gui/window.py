@@ -70,6 +70,8 @@ CSS = """
 .g13-badge { background: alpha(@view_bg_color, 0.9); border-radius: 10px; padding: 2px; margin: 2px;
              box-shadow: 0 0 2px alpha(black, 0.4); }
 .g13-pill-detached { padding: 1px 7px; border-color: alpha(@accent_color, 0.7); }
+.g13-swatch { padding: 2px; min-width: 0; min-height: 0; border-radius: 4px; }
+.g13-swatch:hover { box-shadow: 0 0 0 2px @accent_bg_color; }
 """
 
 
@@ -142,7 +144,7 @@ class MainWindow(Adw.ApplicationWindow):
         content.add_top_bar(self._banner)
 
         self._stick = StickPage(self._profile_changed)
-        self._lcd = LcdPage(self._profile_changed, self._client.set_backlight)
+        self._lcd = LcdPage(self._profile_changed, self._settings_changed, self._client.set_backlight)
         self._macros = MacrosPage(self._store, self._client, self.toast, self._macros_changed, self._retarget)
         self._macros.attach_window_controller(self)
         self._library_panel: LibraryPanel | None = None
@@ -182,6 +184,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._status = self._profiles_ui.status
         self._toasts.set_child(root)
         self._keys.set_mode(self._mode)
+        self._lcd.set_settings(self._settings)
         self._lcd.set_mode(self._mode)
         self._refresh_library()
 
@@ -224,7 +227,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._updating = True
         self._keys.set_profile(self._profile)
         self._stick.set_profile(self._profile)
-        self._lcd.set_profile(self._profile)
+        self._lcd.set_profile(self._profile, sorted(self._profiles))
         self._updating = False
         if activate and self._client.available and name != self._client.profile:
             self._client.set_profile(name)
@@ -418,6 +421,11 @@ class MainWindow(Adw.ApplicationWindow):
         self._schedule_reload()
         self._keys.refresh()          # backlight colour of the legends, stick mode on the directions
 
+    def _settings_changed(self) -> None:
+        """LCD pages / options (global) were edited in the GUI."""
+        self._store.save_settings(self._settings)
+        self._schedule_reload()
+
     def _macros_changed(self) -> None:
         self._schedule_reload()
         self._refresh_library()
@@ -490,6 +498,8 @@ class MainWindow(Adw.ApplicationWindow):
 
     def reload_all(self) -> None:
         self._library = self._store.load_library()
+        self._settings = self._store.load_settings()
+        self._lcd.set_settings(self._settings)
         self._load_profiles()
         self._macros.reload()
         self._refresh_library()

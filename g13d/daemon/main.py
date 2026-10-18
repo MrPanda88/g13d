@@ -41,6 +41,11 @@ class Daemon:
         self.mode: int = state.get("mode", 1) if state.get("mode") in MODES else 1
         self.recording = False
         self.connected = False
+        if not self.settings.lcd_configured and self.profile.legacy_lcd_pages:
+            # pages used to live in each profile: adopt the current profile's list once
+            self.settings.lcd_pages = list(self.profile.legacy_lcd_pages)
+            store.save_settings(self.settings)
+            log.info("LCD pages are global now: kept %s from profile %r", self.settings.lcd_pages, self.profile.name)
 
         self.vinput = VirtualInput()
         self.runner = ActionRunner(self.vinput, self)
@@ -61,6 +66,10 @@ class Daemon:
     def profile_name(self) -> str:
         return self.profile.name
 
+    @property
+    def profile_names(self) -> list[str]:
+        return sorted(self.profiles)
+
     # ---- lifecycle --------------------------------------------------------
     async def run(self) -> None:
         loop = asyncio.get_running_loop()
@@ -71,7 +80,7 @@ class Daemon:
         bus, self.dbus = await start_bus(self)
         self._start_udev_monitor(loop)
         self.stick.configure(self.profile.stick)
-        self.screen.set_pages(self.profile.lcd_pages)
+        self.screen.set_pages(self.settings.lcd_pages, self.settings.lcd_options)
         worker = asyncio.create_task(self._device_loop())
         log.info("g13d %s ready, profile %r mode M%d", __version__, self.profile.name, self.mode)
         await stop.wait()
@@ -196,7 +205,7 @@ class Daemon:
             if prev is not None:
                 self.runner.release(prev)
             action = self.profile.binding(self.mode, name)
-            if name in ("LCD1", "LCD2", "LCD3", "LCD4") and action.type == "none":
+            if name in ("LCD1", "LCD2", "LCD3", "LCD4") and (action.type == "none" or self.screen.reserves(int(name[3]))):
                 self.screen.button(int(name[3]))
                 return
             self.active[name] = action
@@ -243,7 +252,6 @@ class Daemon:
             self.keypad.set_passthrough(prof.stick.mode == "passthrough")
         if self.leds:
             self.leds.set_backlight(prof.backlight)
-        self.screen.set_pages(prof.lcd_pages)
 
     def lcd_page(self, name: str) -> None:
         self.screen.show(name)
@@ -299,6 +307,8 @@ class Daemon:
         self.macros = self.store.load_macros()
         current = profiles.get(self.profile.name) or self._pick_profile(None)
         self._activate(current)
+        if self.screen.page_names != self.settings.lcd_pages or self.screen.options != self.settings.lcd_options:
+            self.screen.set_pages(self.settings.lcd_pages, self.settings.lcd_options)
         self._save_state()
         log.info("configuration reloaded (%d profiles, %d macros), active %r", len(profiles), len(self.macros), current.name)
         if self.dbus:

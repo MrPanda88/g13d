@@ -27,6 +27,5 @@ def default_profile(name: str = "Default") -> Profile:
         name=name,
         backlight=(51, 153, 255),
         stick=StickConfig(mode="keys"),
-        lcd_pages=["status", "clock", "system", "media"],
         modes={1: dict(m1), 2: dict(m1), 3: dict(m1)},
     )

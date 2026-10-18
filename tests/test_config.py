@@ -90,3 +90,25 @@ def test_settings_gui_layout():
     assert Settings.from_toml({"gui": {"layout": "device"}}).gui_layout == "lgs"     # pre-1.1 names
     assert Settings.from_toml({"gui": {"layout": "classic"}}).gui_layout == "gtk"
     assert Settings.from_toml({"general": {"default_profile": "x"}}).default_profile == "x"
+
+
+def test_settings_lcd_roundtrip_and_legacy_profile_pages():
+    from g13d.config.model import Settings
+    s = Settings(lcd_pages=["clock", "profiles"], lcd_options={"clock_style": "numbers"})
+    back = Settings.from_toml(tomllib.loads(tomlout.dumps(s.to_toml())))
+    assert back == s and back.lcd_configured
+    fresh = Settings.from_toml({"general": {}})
+    assert fresh.lcd_pages == ["status", "clock", "system", "media"] and not fresh.lcd_configured
+    assert "options" not in Settings().to_toml()["lcd"]
+    # profiles written before 1.2 carried [lcd] pages: read for migration, never written back
+    p = Profile.from_toml({"name": "old", "lcd": {"pages": ["clock", "text"]}})
+    assert p.legacy_lcd_pages == ["clock", "text"]
+    assert "lcd" not in p.to_toml()
+    assert Profile.from_toml({"name": "new"}).legacy_lcd_pages is None
+    assert p.copy("c") == Profile("c")
+
+
+def test_settings_library_sort():
+    from g13d.config.model import Settings
+    assert Settings.from_toml({"gui": {"library_sort": "type"}}).gui_library_sort == "type"
+    assert Settings.from_toml({"gui": {"library_sort": "zzz"}}).gui_library_sort == "added"

@@ -11,20 +11,26 @@ from g13d.lcd.pages.text import TextPage
 
 class Ctx:
     profile_name = "Default"; mode = 2; recording = False; connected = True
+    profile_names = ["Default", "Diablo III", "StarCraft II", "Titanfall"]
     def set_mode(self, m): pass
     def cycle_profile(self, d): pass
+    def set_profile(self, n): pass
 
 
 async def main():
     out = Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)
-    for name, cls in BUILTIN.items():
-        page = cls()
+    from g13d.lcd.pages.clock import STYLES
+    variants = [(name, {}) for name in BUILTIN] + [("clock", {"clock_style": s}) for s, _ in STYLES[1:]]
+    for name, options in variants:
+        page = BUILTIN[name](); page.configure(options)
         if isinstance(page, TextPage):
             page.text = " ".join(sys.argv[2:]) or "Hello from g13d\nsecond line"
         page.attach()
         await asyncio.sleep(2.5 if name in ("media", "system") else 0)
-        img = new_image(); page.render(ImageDraw.Draw(img), img, Ctx()); page.detach()
+        ctx = Ctx(); page.shown(ctx)
+        img = new_image(); page.render(ImageDraw.Draw(img), img, ctx); page.detach()
         big = img.convert("L").resize((WIDTH * 4, HEIGHT * 4), Image.Resampling.NEAREST)
-        big.save(out / f"{name}.png"); print("wrote", out / f"{name}.png")
+        suffix = "-" + "-".join(options.values()) if options else ""
+        big.save(out / f"{name}{suffix}.png"); print("wrote", out / f"{name}{suffix}.png")
 
 asyncio.run(main())

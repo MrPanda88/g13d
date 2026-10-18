@@ -26,7 +26,7 @@ Features (see `docs/PLAN.md` for the roadmap):
 - 22 G-keys, 4 LCD buttons, thumbstick (arrow keys / pointer / scroll / raw gamepad)
 - M1 / M2 / M3 modes with synced LEDs, per-profile RGB backlight
 - Profiles in plain TOML files
-- 160×43 LCD: status, clock, system (CPU/RAM/net), media (MPRIS now-playing with transport buttons), free text and blank pages; messages from scripts over D-Bus
+- 160×43 LCD: status, analog clock (several dials), profile picker, system (CPU/RAM/net), media (MPRIS now-playing with transport buttons), free text and blank pages; messages from scripts over D-Bus
 - Macros: press/release/tap/delay steps, play once / while held / toggle, recorder in the GUI
 - `systemd --user` service, udev rule, D-Bus API `org.g13d`
 
@@ -72,9 +72,6 @@ backlight = [51, 153, 255]
 mode = "keys"          # keys | mouse | scroll | passthrough
 deadzone = 0.25
 
-[lcd]
-pages = ["status", "clock", "system", "media"]   # also: text, blank
-
 [m1]
 G1 = "KEY_1"                                 # single key (evdev name)
 G8 = { combo = ["KEY_LEFTCTRL", "KEY_C"] }   # several keys together
@@ -86,12 +83,20 @@ LCD_MENU = { lcd_page = "next" }
 STICK_UP = "KEY_UP"
 ```
 
-Then `g13ctl reload`. `~/.config/g13d/config.toml` holds `default_profile`: the profile loaded when
-the daemon starts (empty = restore the last one used; the star in the GUI sets it).
+Then `g13ctl reload`. `~/.config/g13d/config.toml` holds the global settings: `default_profile` (the
+profile loaded when the daemon starts; empty = restore the last one used; the star in the GUI sets
+it) and the LCD pages, which are the same whatever the profile:
+
+```toml
+[lcd]
+pages = ["status", "clock", "system", "media"]   # also: profiles, text, blank
+options = { clock_style = "classic" }            # classic | minimal | numbers | plain | radar | orbit | bars | binary | digital
+```
 
 The round button left of the LCD keys cycles pages; on the status page the
 four LCD keys select M1/M2/M3 and the next profile, on the media page they drive the player. Bind
-`LCD1`..`LCD4` in a profile to override that. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
+`LCD1`..`LCD4` in a profile to override that, except on the profiles page, which keeps LCD1–3 (up,
+down, activate) for itself while it is shown. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
 to physical positions, your keyboard layout is applied by the compositor as usual.
 
 ## Macros
@@ -146,8 +151,9 @@ In both:
   shows the name of its assignment (as listed in the library); its tooltip shows what the key prints
   with your real layout. Keys light up when pressed on the device.
 - **Stick**: keys / pointer / scroll / passthrough, dead zone, speeds.
-- **LCD & Light**: backlight colour (live), LCD pages on/off and order (drag or arrows), preview
-  rendered with the daemon's code and your backlight colour.
+- **LCD & Light**: backlight colour with a hue wheel, R G B sliders and presets (applied live), LCD
+  pages on/off and order (drag or arrows), page settings (clock dial style), preview rendered with
+  the daemon's code and your backlight colour.
 - **Macros**: create, record like Logitech Gaming Software (press Record, type, press Record again
   or MR on the G13; recording replaces the steps), add key or mouse steps by hand, edit delays,
   drag to reorder, play on the device.

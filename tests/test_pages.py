@@ -10,6 +10,7 @@ from g13d.lcd.fonts import font
 
 class Ctx:
     profile_name = "A rather long profile name that will not fit"
+    profile_names = ["Zed", "A rather long profile name that will not fit", "Mid", "Bob", "Eve"]
     mode = 3
     recording = False
     connected = True
@@ -17,6 +18,7 @@ class Ctx:
 
     def set_mode(self, m): self.calls.append(("mode", m))
     def cycle_profile(self, d): self.calls.append(("cycle", d))
+    def set_profile(self, n): self.calls.append(("profile", n))
 
 
 def _render(page):
@@ -34,6 +36,43 @@ def test_all_pages_render():
         assert len(data) == 992
         if name != "blank":
             assert any(data[32:]), f"page {name} rendered nothing"
+
+
+def test_clock_styles_render():
+    from g13d.lcd.pages.clock import STYLES, ClockPage
+    outputs = set()
+    for style, _label in STYLES:
+        page = ClockPage()
+        page.configure({"clock_style": style})
+        assert page.style == style
+        outputs.add(_render(page))
+    assert len(outputs) == len(STYLES)          # every style looks different
+    page = ClockPage(); page.configure({"clock_style": "bogus"})
+    assert page.style == "classic"
+
+
+def test_profiles_page_navigation():
+    from g13d.lcd.pages.profiles import ProfilesPage
+    ctx = Ctx(); ctx.calls = []
+    page = ProfilesPage()
+    assert page.reserved_buttons == (1, 2, 3)
+    page.shown(ctx)
+    names = sorted(ctx.profile_names)
+    assert names[page.cursor] == ctx.profile_name
+    assert page.button(2, ctx) and names[page.cursor] == names[(names.index(ctx.profile_name) + 1) % 5]
+    for _ in range(5):
+        page.button(1, ctx)
+    assert page.button(3, ctx)
+    assert ctx.calls == [("profile", names[page.cursor])]
+    assert not page.button(4, ctx)
+    _render(page)                                # with the scrollbar (5 profiles, 3 rows)
+    empty = Ctx(); empty.profile_names = []
+    assert not page.button(3, empty)
+
+
+def test_make_pages_passes_options():
+    page = make_pages(["clock"], {"clock_style": "digital"})[0]
+    assert page.style == "digital"
 
 
 def test_make_pages_filters_and_dedups():

@@ -26,6 +26,7 @@ class Screen:
         self._dev: LcdDevice | None = None
         self._pages: list[Page] = make_pages(["status"])
         self._index = 0
+        self._options: dict[str, str] = {}
         self._message: tuple[str, float] | None = None   # text, deadline
         self._task: asyncio.Task | None = None
         self._last: bytes | None = None
@@ -54,13 +55,14 @@ class Screen:
         if self._dev is not None:
             self._dev.write(encode(new_image()))
 
-    def set_pages(self, names: list[str]) -> None:
+    def set_pages(self, names: list[str], options: dict[str, str] | None = None) -> None:
         current = self.current.name
         attached = self._dev is not None
         if attached:
             for p in self._pages:
                 p.detach()
-        self._pages = make_pages(names)
+        self._options = dict(options or {})
+        self._pages = make_pages(names, self._options)
         for p in self._pages:
             if isinstance(p, TextPage):
                 p.text = self._text
@@ -68,6 +70,7 @@ class Screen:
         if attached:
             for p in self._pages:
                 p.attach()
+        self.current.shown(self._ctx)
         self.refresh(force=True)
 
     # ---- navigation ---------------------------------------------------------
@@ -78,6 +81,10 @@ class Screen:
     @property
     def page_names(self) -> list[str]:
         return [p.name for p in self._pages]
+
+    @property
+    def options(self) -> dict[str, str]:
+        return dict(self._options)
 
     @staticmethod
     def available_pages() -> list[str]:
@@ -97,9 +104,14 @@ class Screen:
                 log.warning("unknown LCD page %r (active pages: %s)", name, ", ".join(self.page_names))
                 return
         self._message = None
+        self.current.shown(self._ctx)
         self.refresh(force=True)
         if self._on_page_change:
             self._on_page_change(self.current.name)
+
+    def reserves(self, index: int) -> bool:
+        """Whether the page on screen takes LCD button `index` even when the key is bound."""
+        return index in self.current.reserved_buttons
 
     def button(self, index: int) -> bool:
         if self._message:

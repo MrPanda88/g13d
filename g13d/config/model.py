@@ -13,6 +13,8 @@ MODES = (1, 2, 3)
 STICK_MODES = ("keys", "mouse", "scroll", "passthrough")
 ACTION_TYPES = ("none", "key", "combo", "macro", "mouse", "mode", "profile", "lcd_page")
 GUI_LAYOUTS = ("gtk", "lgs")
+LIBRARY_SORTS = ("added", "name", "type")
+DEFAULT_LCD_PAGES = ("status", "clock", "system", "media")
 _LAYOUT_ALIASES = {"classic": "gtk", "device": "lgs"}
 
 
@@ -202,8 +204,9 @@ class Profile:
     backlight: tuple[int, int, int] = (0, 0, 255)
     icon: str = ""              # GUI only: image file path or themed icon name shown on the profile tile
     stick: StickConfig = field(default_factory=StickConfig)
-    lcd_pages: list[str] = field(default_factory=lambda: ["status", "clock", "system"])
     modes: dict[int, Bindings] = field(default_factory=lambda: {m: {} for m in MODES})
+    # [lcd] pages of profiles written before 1.2 (pages are global now): read once for migration, never written
+    legacy_lcd_pages: list[str] | None = field(default=None, compare=False, repr=False)
 
     def binding(self, mode: int, control: str) -> Action:
         return self.modes.get(mode, {}).get(control, Action.none())
@@ -241,8 +244,8 @@ class Profile:
             backlight=backlight,  # type: ignore[arg-type]
             icon=str(d.get("icon", "")),
             stick=StickConfig.from_toml(d.get("stick")),
-            lcd_pages=[str(p) for p in lcd.get("pages", ["status", "clock", "system"])],
             modes=modes,
+            legacy_lcd_pages=[str(p) for p in lcd["pages"]] if isinstance(lcd.get("pages"), list) else None,
         )
 
     def to_toml(self) -> dict:
@@ -251,7 +254,6 @@ class Profile:
             "backlight": list(self.backlight),
             **({"icon": self.icon} if self.icon else {}),
             "stick": self.stick.to_toml(),
-            "lcd": {"pages": list(self.lcd_pages)},
         }
         for m in MODES:
             out[f"m{m}"] = {c: a.to_toml() for c, a in sorted(self.modes.get(m, {}).items(), key=_control_order)}
@@ -259,7 +261,6 @@ class Profile:
 
     def copy(self, new_name: str) -> Profile:
         return replace(self, name=new_name, stick=replace(self.stick),
-                       lcd_pages=list(self.lcd_pages),
                        modes={m: dict(b) for m, b in self.modes.items()})
 
 
@@ -273,28 +274,42 @@ class Settings:
     """Global daemon settings (~/.config/g13d/config.toml).
 
     default_profile: profile loaded when the daemon starts; empty = restore the last used one.
+    lcd_pages / lcd_options: the LCD pages shown (same whatever the profile) and their settings ([lcd]).
     gui_layout: how g13-gui arranges its window ([gui] layout): "gtk" (classic widgets) or "lgs" (device picture).
+    gui_library_sort: order of the assignments panel ([gui] library_sort): "added", "name" or "type".
     """
     default_profile: str = ""
     lcd_enabled: bool = True
     log_level: str = "INFO"
+    lcd_pages: list[str] = field(default_factory=lambda: list(DEFAULT_LCD_PAGES))
+    lcd_options: dict[str, str] = field(default_factory=dict)
     gui_layout: str = "gtk"
+    gui_library_sort: str = "added"
+    lcd_configured: bool = field(default=True, compare=False)   # False: the file had no [lcd] table yet
 
     @classmethod
     def from_toml(cls, d: dict) -> Settings:
         g = d.get("general", d) or {}
         gui = d.get("gui", {}) or {}
+        lcd = d.get("lcd")
         layout = str(gui.get("layout", "gtk"))
         layout = _LAYOUT_ALIASES.get(layout, layout)
+        sort = str(gui.get("library_sort", "added"))
+        pages = (lcd or {}).get("pages")
         return cls(
             default_profile=str(g.get("default_profile", "")),
             lcd_enabled=bool(g.get("lcd_enabled", True)),
             log_level=str(g.get("log_level", "INFO")).upper(),
+            lcd_pages=[str(x) for x in pages] if isinstance(pages, list) and pages else list(DEFAULT_LCD_PAGES),
+            lcd_options={str(k): str(v) for k, v in ((lcd or {}).get("options", {}) or {}).items()},
             gui_layout=layout if layout in GUI_LAYOUTS else "gtk",
+            gui_library_sort=sort if sort in LIBRARY_SORTS else "added",
+            lcd_configured=isinstance(lcd, dict),
         )
 
     def to_toml(self) -> dict:
         return {"general": {"default_profile": self.default_profile,
                             "lcd_enabled": self.lcd_enabled,
                             "log_level": self.log_level},
-                "gui": {"layout": self.gui_layout}}
+                "lcd": {"pages": list(self.lcd_pages), **({"options": dict(self.lcd_options)} if self.lcd_options else {})},
+                "gui": {"layout": self.gui_layout, "library_sort": self.gui_library_sort}}
