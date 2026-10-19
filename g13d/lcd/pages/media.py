@@ -1,4 +1,7 @@
-"""Media page: now playing via MPRIS. Buttons: LCD1 prev, LCD2 play/pause, LCD3 next, LCD4 next player."""
+"""Media page: now playing via MPRIS. LCD1 previous, LCD2 play/pause, LCD3 next, LCD4 next player (keys reserved).
+
+The bottom row shows the legends of the four LCD keys, aligned with them as on the profiles page.
+"""
 from __future__ import annotations
 
 import time
@@ -7,7 +10,10 @@ from g13d.lcd.fonts import font
 from g13d.lcd.framebuffer import HEIGHT, WIDTH
 from g13d.lcd.mpris import MprisWatcher
 
-from .base import Page, bar, fit, marquee
+from .base import Page, fit, marquee
+from .profiles import BUTTON_X
+
+LEGEND_Y = HEIGHT - 9       # 9 px high legends, as on the profiles page
 
 
 def _mmss(us: int) -> str:
@@ -18,6 +24,7 @@ def _mmss(us: int) -> str:
 class MediaPage(Page):
     name = "media"
     title = "Media"
+    reserved_buttons = (1, 2, 3, 4)
 
     def __init__(self, watcher: MprisWatcher | None = None) -> None:
         self._w = watcher or MprisWatcher()
@@ -37,19 +44,42 @@ class MediaPage(Page):
             draw.text(((WIDTH - draw.textlength(msg, font=f_title)) / 2, 14), msg, font=f_title, fill=1)
             return
         t = time.monotonic()
-        icon = {"Playing": ">", "Paused": "||", "Stopped": "[]"}.get(p.status, "?")
-        draw.text((0, 0), marquee(draw, p.title or "—", f_title, WIDTH - 16, t), font=f_title, fill=1)
-        draw.text((WIDTH - 12, 0), icon, font=f_title, fill=1)
-        sub = p.artist or p.album or p.identity
-        draw.text((0, 15), fit(draw, sub, f_small, WIDTH), font=f_small, fill=1)
+        draw.text((0, -1), marquee(draw, p.title or p.identity or "—", f_title, WIDTH, t), font=f_title, fill=1)
+        sub = p.artist or p.album or (p.identity if p.title else "")
+        right = ""
         if p.length_us > 0:
             pos = min(p.position_now_us, p.length_us)
-            label = f"{_mmss(pos)}/{_mmss(p.length_us)}"
-            lw = draw.textlength(label, font=f_small)
-            bar(draw, 0, HEIGHT - 10, int(WIDTH - lw - 6), HEIGHT - 2, pos / p.length_us)
-            draw.text((WIDTH - lw, HEIGHT - 13), label, font=f_small, fill=1)
+            right = f"{_mmss(pos)}/{_mmss(p.length_us)}"
+            # thin progress line between the text and the legends
+            draw.line((0, 30, WIDTH - 1, 30), fill=1)
+            w = int(round(WIDTH * pos / p.length_us))
+            if w > 0:
+                draw.rectangle((0, 29, w - 1, 31), fill=1)
+        rw = draw.textlength(right, font=f_small) if right else 0
+        draw.text((0, 14), fit(draw, sub, f_small, WIDTH - rw - 6), font=f_small, fill=1)
+        if right:
+            draw.text((WIDTH - rw, 14), right, font=f_small, fill=1)
+        n = len(self._w.players)
+        players = f"{self._w.index + 1}/{n}" if n > 1 else ""
+        self._legends(draw, playing=p.status == "Playing", players=players)
+
+    def _legends(self, draw, playing: bool, players: str) -> None:
+        y = LEGEND_Y
+        x = BUTTON_X[0]                 # previous: bar + left triangle
+        draw.rectangle((x - 5, y, x - 4, y + 8), fill=1)
+        draw.polygon([(x - 3, y + 4), (x + 4, y), (x + 4, y + 8)], fill=1)
+        x = BUTTON_X[1]                 # play/pause: what pressing does
+        if playing:
+            draw.rectangle((x - 4, y, x - 2, y + 8), fill=1)
+            draw.rectangle((x + 2, y, x + 4, y + 8), fill=1)
         else:
-            draw.text((0, HEIGHT - 13), fit(draw, p.identity, f_small, WIDTH), font=f_small, fill=1)
+            draw.polygon([(x - 3, y), (x + 4, y + 4), (x - 3, y + 8)], fill=1)
+        x = BUTTON_X[2]                 # next: right triangle + bar
+        draw.polygon([(x - 4, y), (x + 3, y + 4), (x - 4, y + 8)], fill=1)
+        draw.rectangle((x + 4, y, x + 5, y + 8), fill=1)
+        if players:                     # next player: index / count, only when there is a choice
+            f = font(11, bold=False)
+            draw.text((BUTTON_X[3] - draw.textlength(players, font=f) / 2, y - 3), players, font=f, fill=1)
 
     def button(self, index: int, ctx) -> bool:
         match index:

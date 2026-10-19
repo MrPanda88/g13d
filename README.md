@@ -94,9 +94,9 @@ options = { clock_style = "classic" }            # classic | minimal | numbers |
 ```
 
 The round button left of the LCD keys cycles pages; on the status page the
-four LCD keys select M1/M2/M3 and the next profile, on the media page they drive the player. Bind
-`LCD1`..`LCD4` in a profile to override that, except on the profiles page, which keeps LCD1–3 (up,
-down, activate) for itself while it is shown. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
+four LCD keys select M1/M2/M3 and the next profile. Bind `LCD1`..`LCD4` in a profile to override
+that, except on the profiles page (up, down, activate, lock) and the media page (previous, play/pause,
+next, next player), which keep the four keys for themselves and show what they do along the bottom. Key names are Linux evdev names (`KEY_A`, `KEY_LEFTSHIFT`, …); they refer
 to physical positions, your keyboard layout is applied by the compositor as usual.
 
 ## Per-application profiles
@@ -108,6 +108,11 @@ name, `*` allowed, e.g. `steam_app_*`), pick one of the open windows, or press *
 the application and press **LCD 3** under the screen. `g13ctl apps` lists what the desktop reports,
 `g13ctl capture PROFILE` starts a capture, `auto_profiles = false` in `config.toml` turns the whole
 thing off.
+
+Linking an application also fetches its **icon** for the profile tile (kept in `~/.config/g13d/icons/`;
+an icon you chose yourself is never replaced). Steam games (`steam_app_<id>`, or any game started by
+Steam) get their client icon from Steam's local cache, else from Steam's CDN; other applications get
+the icon of their desktop entry. Right-click → *Find icon* runs the lookup again.
 
 A **locked** profile (right-click → *Lock*, `g13ctl lock NAME`, or LCD 4 on the profiles page) is
 activated and kept whatever the focused application; one profile at most is locked, switching to

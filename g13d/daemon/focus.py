@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 
 from dbus_next import Message, MessageType
 
+from g13d.config.appicons import process_steam_appid
+
 log = logging.getLogger(__name__)
 
 SHELL_DEST = "org.gnome.Shell"
@@ -35,6 +37,7 @@ class FocusInfo:
     sandboxed_app_id: str = ""
     gtk_app_id: str = ""
     process: str = field(default="", compare=False)     # from /proc, filled by from_variant
+    steam_appid: int | None = field(default=None, compare=False)    # SteamAppId of the process, from /proc
 
     @classmethod
     def from_dict(cls, d: dict) -> FocusInfo:
@@ -45,6 +48,7 @@ class FocusInfo:
                    pid=int(g("pid", 0) or 0), app_id=str(g("app_id")), app_name=str(g("app_name")),
                    sandboxed_app_id=str(g("sandboxed_app_id")), gtk_app_id=str(g("gtk_app_id")))
         info.process = process_name(info.pid)
+        info.steam_appid = process_steam_appid(info.pid) if info.pid > 0 else None
         return info
 
     @property

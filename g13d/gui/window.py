@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 import gi
 
@@ -15,6 +16,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
 from g13d import __version__  # noqa: E402
+from g13d.config.appicons import find_icon, is_auto_icon  # noqa: E402
 from g13d.config.library import LibraryEntry  # noqa: E402
 from g13d.config.loader import ConfigStore  # noqa: E402
 from g13d.config.model import GUI_LAYOUTS, MODES, Action, Profile, Settings, order_profiles  # noqa: E402
@@ -293,6 +295,8 @@ class MainWindow(Adw.ApplicationWindow):
                 self._set_default(prof.name)
             case "icon" if prof:
                 self._pick_icon(prof)
+            case "icon-find" if prof:
+                self._find_icon(prof, manual=True)
             case "icon-clear" if prof:
                 prof.icon = ""
                 self._store.save_profile(prof)
@@ -348,13 +352,50 @@ class MainWindow(Adw.ApplicationWindow):
         if prof is None:
             return
 
-        def save(rule: str) -> None:
+        def save(rule: str, steam_appid: int | None) -> None:
             prof.app = rule
             self._store.save_profile(prof)
             self._rebuild_list()
             self._schedule_reload()
             self.toast(f"“{prof.name}” linked to {rule}" if rule else f"“{prof.name}” no longer linked to an application")
+            if rule and is_auto_icon(prof.icon, self._store.icons_dir):
+                self._find_icon(prof, steam_appid=steam_appid)
         AppDialog(prof, self._client, save, self.toast).present(self)
+
+    def _find_icon(self, prof: Profile, steam_appid: int | None = None, manual: bool = False) -> None:
+        """Look up the linked application's icon in a thread (files + Steam's CDN). Automatic lookups keep an icon
+        the user chose; the menu command replaces it."""
+        rule, name = prof.app, prof.name
+        if not rule:
+            self.toast(f"Link “{name}” to an application first (Application…)")
+            return
+
+        def done(icon: str) -> bool:
+            current = self._profiles.get(name)
+            if current is None or current.app != rule or (not manual and not is_auto_icon(current.icon, self._store.icons_dir)):
+                return False
+            if icon:
+                current.icon = icon
+                self._store.save_profile(current)
+                self._rebuild_list()
+                self._schedule_reload()
+            elif manual:
+                self.toast(f"No icon found for {rule}")
+            return False
+
+        def run(appid: int | None) -> None:
+            threading.Thread(target=lambda: GLib.idle_add(done, find_icon(rule, self._store.icons_dir, appid)),
+                             daemon=True).start()
+
+        if steam_appid is not None or not manual:
+            run(steam_appid)
+            return
+
+        # a native game's process name says nothing about Steam: ask the running windows for its SteamAppId
+        def from_windows(apps: list[dict]) -> None:
+            ids = [a.get("steam_appid", "") for a in apps if a.get("key", "").casefold() == rule.casefold()]
+            run(next((int(i) for i in ids if i.isdigit()), None))
+        self._client.list_apps(from_windows)
 
     def _set_default(self, name: str) -> None:
         self._settings.default_profile = "" if self._settings.default_profile == name else name

@@ -4,6 +4,7 @@
     state.json         runtime state written by the daemon (current profile / mode)
     profiles/*.toml    one file per profile (file stem == safe profile name)
     macros/*.toml      one file per macro (used from milestone M3 on)
+    icons/             application icons found for the profiles (config/appicons.py)
 """
 from __future__ import annotations
 
@@ -38,6 +39,7 @@ class ConfigStore:
         self.root = root or config_dir()
         self.profiles_dir = self.root / "profiles"
         self.macros_dir = self.root / "macros"
+        self.icons_dir = self.root / "icons"
 
     # ---- settings -----------------------------------------------------
     def load_settings(self) -> Settings:

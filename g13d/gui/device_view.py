@@ -21,7 +21,7 @@ from g13d.config.model import STICK_DIRS, Action, Profile  # noqa: E402
 from . import device_geometry as geo  # noqa: E402
 from .dnd import make_action_target  # noqa: E402
 from .keymap import action_label  # noqa: E402
-from .widgets import attach_key_menu  # noqa: E402
+from .widgets import attach_key_menu, led_color  # noqa: E402
 
 LabelFor = Callable[[Action], str]
 
@@ -37,7 +37,10 @@ def _attrs(px: float, rgb: tuple[int, int, int] | None = None, bold: bool = Fals
     attrs = Pango.AttrList()
     attrs.insert(Pango.attr_size_new_absolute(int(max(px, 6) * Pango.SCALE)))
     if rgb is not None:
-        attrs.insert(Pango.attr_foreground_new(*(c * 257 for c in rgb)))
+        # legends are lit from behind: the backlight's hue, toned down towards grey so it stays readable, not loud
+        lit = led_color(rgb)
+        lit = tuple(int(c * 0.6 + 255 * 0.25) for c in lit) if lit else (110, 110, 116)
+        attrs.insert(Pango.attr_foreground_new(*(c * 257 for c in lit)))
     if bold:
         attrs.insert(Pango.attr_weight_new(Pango.Weight.BOLD))
     return attrs

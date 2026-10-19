@@ -12,6 +12,7 @@ import sys
 import pyudev
 
 from g13d import __version__
+from g13d.config.appicons import find_icon, is_auto_icon
 from g13d.config.defaults import default_profile
 from g13d.config.loader import ConfigStore
 from g13d.config.model import order_profiles, MODES, Action, Profile
@@ -348,11 +349,11 @@ class Daemon:
         handle.cancel()
         self._capture = None
         self.screen.pop_modal()
-        self.link_app(name, info.key)
+        self.link_app(name, info.key, info.steam_appid)
         self.screen.message(f"{name}\n= {info.label}", 3.0)
 
-    def link_app(self, profile_name: str, rule: str) -> None:
-        """Store the application rule in the profile file and tell the GUI."""
+    def link_app(self, profile_name: str, rule: str, steam_appid: int | None = None) -> None:
+        """Store the application rule in the profile file and tell the GUI, then look for the application's icon."""
         prof = self.profiles.get(profile_name)
         if prof is None:
             raise KeyError(profile_name)
@@ -363,6 +364,20 @@ class Daemon:
             self.dbus.ConfigChanged()
         if self.focus:
             self._on_focus(self.focus.current)
+        if rule and is_auto_icon(prof.icon, self.store.icons_dir):
+            asyncio.get_running_loop().create_task(self._fetch_icon(profile_name, rule, steam_appid))
+
+    async def _fetch_icon(self, profile_name: str, rule: str, steam_appid: int | None) -> None:
+        icon = await asyncio.get_running_loop().run_in_executor(None, find_icon, rule, self.store.icons_dir, steam_appid)
+        prof = self.profiles.get(profile_name)
+        # the profile may have been relinked or given an icon by hand meanwhile
+        if not icon or prof is None or prof.app != rule or not is_auto_icon(prof.icon, self.store.icons_dir):
+            return
+        prof.icon = icon
+        self.store.save_profile(prof)
+        log.info("profile %r: icon %s", profile_name, icon)
+        if self.dbus:
+            self.dbus.ConfigChanged()
 
     def set_auto_profiles(self, enabled: bool) -> None:
         self.settings.auto_profiles = enabled

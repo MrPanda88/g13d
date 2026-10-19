@@ -74,27 +74,59 @@ class MprisWatcher:
         self.players.clear()
 
     # ---- selection --------------------------------------------------------
+    # The page shows the selected player. It changes when the user picks another one (LCD4), when a player
+    # starts playing (follow what the user just started) or when the selected one goes away.
     @property
     def active(self) -> Player | None:
         if not self.players:
             return None
         cur = self.players.get(self._selected or "")
-        playing = [p for p in self.players.values() if p.status == "Playing"]
-        if cur is not None and (cur.status == "Playing" or not playing):
-            return cur
-        best = playing[0] if playing else next(iter(self.players.values()))
-        self._selected = best.bus_name
-        return best
+        if cur is None:
+            playing = [p for p in self.players.values() if p.status == "Playing"]
+            cur = playing[0] if playing else self.players[min(self.players)]
+            self._selected = cur.bus_name
+        return cur
+
+    @property
+    def index(self) -> int:
+        """Position of the active player in the order select_next() walks (0 when none)."""
+        p = self.active
+        return sorted(self.players).index(p.bus_name) if p is not None else 0
 
     def select_next(self) -> None:
         names = sorted(self.players)
         if not names:
             return
-        try:
-            i = names.index(self._selected or "")
-        except ValueError:
-            i = -1
+        cur = self.active
+        i = names.index(cur.bus_name) if cur is not None else -1
         self._selected = names[(i + 1) % len(names)]
+
+    def set_players(self, names: dict[str, str]) -> None:
+        """Bus name -> identity of the players on the bus: forget the gone ones, add the new ones."""
+        for gone in set(self.players) - set(names):
+            del self.players[gone]
+        for new, identity in names.items():
+            if new not in self.players:
+                self.players[new] = Player(new, identity=identity or new[len(PREFIX):].split(".")[0].capitalize())
+
+    def update(self, name: str, props: dict) -> None:
+        """Apply org.mpris.MediaPlayer2.Player properties (plain Python values) to a player."""
+        p = self.players.get(name)
+        if p is None:
+            return
+        meta = props.get("Metadata") or {}
+        status = str(props.get("PlaybackStatus", "Stopped"))
+        if status == "Playing" and p.status != "Playing":
+            self._selected = name
+        p.status = status
+        p.title = str(meta.get("xesam:title", "") or "")
+        artist = meta.get("xesam:artist", "")
+        p.artist = ", ".join(artist) if isinstance(artist, list) else str(artist or "")
+        p.album = str(meta.get("xesam:album", "") or "")
+        p.length_us = int(meta.get("mpris:length", 0) or 0)
+        p.position_us = int(props.get("Position", 0) or 0)
+        p.can_control = bool(props.get("CanControl", True))
+        p.updated = time.monotonic()
 
     # ---- controls ---------------------------------------------------------
     def control(self, member: str) -> None:
@@ -140,32 +172,20 @@ class MprisWatcher:
             log.debug("ListNames failed: %s", exc)
             return
         names = {n for n in reply.body[0] if n.startswith(PREFIX)}
-        for gone in set(self.players) - names:
-            del self.players[gone]
-        for new in names - set(self.players):
-            p = Player(new)
-            reply = await self._call(new, "org.freedesktop.DBus.Properties", "Get", "ss", [ROOT_IFACE, "Identity"])
-            if reply is not None and reply.message_type == MessageType.METHOD_RETURN and reply.body:
-                p.identity = str(_unwrap(reply.body[0]))
-            if not p.identity:
-                p.identity = new[len(PREFIX):].split(".")[0].capitalize()
-            self.players[new] = p
+        found: dict[str, str] = {}
+        for name in names:
+            if name in self.players:
+                found[name] = self.players[name].identity
+                continue
+            reply = await self._call(name, "org.freedesktop.DBus.Properties", "Get", "ss", [ROOT_IFACE, "Identity"])
+            ok = reply is not None and reply.message_type == MessageType.METHOD_RETURN and reply.body
+            found[name] = str(_unwrap(reply.body[0])) if ok else ""
+        self.set_players(found)
 
     async def _refresh(self, name: str) -> None:
-        p = self.players.get(name)
-        if p is None:
+        if name not in self.players:
             return
         reply = await self._call(name, "org.freedesktop.DBus.Properties", "GetAll", "s", [PLAYER_IFACE])
         if reply is None or reply.message_type != MessageType.METHOD_RETURN or not reply.body:
             return
-        props = _unwrap(reply.body[0])
-        meta = props.get("Metadata") or {}
-        p.status = str(props.get("PlaybackStatus", "Stopped"))
-        p.title = str(meta.get("xesam:title", "") or "")
-        artist = meta.get("xesam:artist", "")
-        p.artist = ", ".join(artist) if isinstance(artist, list) else str(artist or "")
-        p.album = str(meta.get("xesam:album", "") or "")
-        p.length_us = int(meta.get("mpris:length", 0) or 0)
-        p.position_us = int(props.get("Position", 0) or 0)
-        p.can_control = bool(props.get("CanControl", True))
-        p.updated = time.monotonic()
+        self.update(name, _unwrap(reply.body[0]))

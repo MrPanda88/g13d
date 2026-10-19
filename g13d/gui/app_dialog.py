@@ -21,7 +21,8 @@ NO_TRACKING = ("The desktop is not reporting the focused window. Install the g13
 
 
 class AppDialog(Adw.Dialog):
-    def __init__(self, profile: Profile, client: DaemonClient, on_save: Callable[[str], None], toast: Callable[[str], None]):
+    def __init__(self, profile: Profile, client: DaemonClient, on_save: Callable[[str, int | None], None],
+                 toast: Callable[[str], None]):
         super().__init__(title=f"Application for “{profile.name}”", content_width=520)
         self._profile = profile
         self._client = client
@@ -69,7 +70,7 @@ class AppDialog(Adw.Dialog):
         self._apps_group.set_header_suffix(refresh)
         page.append(self._apps_group)
         self._apps = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.NONE)
-        self._apps.connect("row-activated", lambda _l, row: (self._rule.set_text(row.app_key), self._apply()))
+        self._apps.connect("row-activated", lambda _l, row: self._pick(row))
         self._apps_group.add(self._apps)
         self._empty = Gtk.Label(label="No window reported.", css_classes=["dim-label"], margin_top=6)
         self._apps_group.add(self._empty)
@@ -84,10 +85,16 @@ class AppDialog(Adw.Dialog):
         self._load_apps()
 
     # ---- actions -----------------------------------------------------------------
-    def _apply(self) -> None:
+    def _apply(self, steam_appid: int | None = None) -> None:
         rule = self._rule.get_text().strip()
         if rule != self._profile.app:
-            self._on_save(rule)
+            self._on_save(rule, steam_appid)
+
+    def _pick(self, row) -> None:
+        """A running application was clicked: link it and close, like a capture on the G13."""
+        self._rule.set_text(row.app_key)
+        self._apply(row.steam_appid)
+        self.close()
 
     def _capture(self) -> None:
         self._client.capture_app(self._profile.name)
@@ -104,6 +111,7 @@ class AppDialog(Adw.Dialog):
                 row.set_subtitle_lines(1)
                 row.set_tooltip_text(f"{a.get('title', '')}\n{a.get('ids', '')}")
                 row.app_key = a.get("key", "")  # type: ignore[attr-defined]
+                row.steam_appid = int(a["steam_appid"]) if a.get("steam_appid", "").isdigit() else None  # type: ignore[attr-defined]
                 if a.get("key") and a["key"].casefold() == self._profile.app.casefold():
                     row.add_suffix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
                 row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))

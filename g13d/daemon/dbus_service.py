@@ -147,10 +147,11 @@ class DaemonInterface(ServiceInterface):
 
     @method()
     async def ListApps(self) -> "aa{ss}":
-        """Windows currently open: key (what to store in a profile), label, title, pid."""
+        """Windows currently open: key (what to store in a profile), label, title, pid, steam_appid ("" if none)."""
         if not self._d.focus:
             return []
-        return [{"key": w.key, "label": w.label, "title": w.title, "pid": str(w.pid), "ids": ", ".join(w.identifiers())}
+        return [{"key": w.key, "label": w.label, "title": w.title, "pid": str(w.pid), "ids": ", ".join(w.identifiers()),
+                 "steam_appid": str(w.steam_appid or "")}
                 for w in await self._d.focus.list_windows() if w.key]
 
     @method()

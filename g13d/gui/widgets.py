@@ -85,3 +85,12 @@ class WidePage(Gtk.ScrolledWindow):
 
     def add(self, widget: Gtk.Widget) -> None:
         self._box.append(widget)
+
+
+def led_color(rgb: tuple[int, int, int]) -> tuple[int, int, int] | None:
+    """How a backlight setting looks lit: the G13's LEDs shine brightly whatever the values, only the hue counts
+    (weak channels still show). None when the backlight is off."""
+    top = max(rgb)
+    if top == 0:
+        return None
+    return tuple(int(255 * (c / top) ** 0.6) for c in rgb)  # type: ignore[return-value]

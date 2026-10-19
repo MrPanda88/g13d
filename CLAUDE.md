@@ -33,6 +33,9 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   (`data/gnome-shell/g13d@g13d.org`, interface `org.g13d.Shell` on gnome-shell's connection) and the daemon switches to
   the profile whose `app` rule matches the focused window, back to `manual_profile` otherwise (`set_profile(automatic=)`).
   `Screen.push_modal()` shows a page over the current one (capture page: LCD3 links the focused app to a profile).
+  `config/appicons.py` finds the linked application's icon (Steam: hicolor `steam_icon_<id>`, appinfo.vdf / steamcmd.net
+  hash + local or CDN `.ico`; else the desktop entry's Icon) into `<config>/icons/`, on link (GUI and LCD capture)
+  and from the menu *Find icon*; an icon outside that folder was chosen by the user and is kept by automatic lookups.
   `locked_profile` (daemon state, state.json) is always the active profile and blocks automatic switching; a
   manual switch to another profile releases it
 - `g13d/gui/`: GTK4/libadwaita app `g13-gui`; `g13d/cli/`: `g13ctl`

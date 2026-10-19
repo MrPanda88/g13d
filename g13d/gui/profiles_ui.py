@@ -41,6 +41,7 @@ def profile_menu(name: str, is_default: bool, is_locked: bool = False, horizonta
     s2.append("Rename…", "profile.rename")
     s2.append("Duplicate", "profile.duplicate")
     s2.append("Choose icon…", "profile.icon")
+    s2.append("Find icon", "profile.icon-find")
     s2.append("Remove icon", "profile.icon-clear")
     s2.append("Application…", "profile.app")
     m.append_section(None, s2)
@@ -64,7 +65,7 @@ class _ContextMenu:
         self.popover.set_parent(host)
         self.popover.set_has_arrow(False)
         group = Gio.SimpleActionGroup()
-        for cmd in ("activate", "lock", "default", "rename", "duplicate", "icon", "icon-clear", "app", "delete",
+        for cmd in ("activate", "lock", "default", "rename", "duplicate", "icon", "icon-find", "icon-clear", "app", "delete",
                     "move-up", "move-down"):
             a = Gio.SimpleAction.new(cmd, None)
             a.connect("activate", lambda _a, _p, c=cmd: self._run(c))
@@ -167,7 +168,7 @@ class ProfilesSidebar(Gtk.Box):
             row = Adw.ActionRow(title=name, activatable=True, use_markup=False)
             make_reorderable(self._list, row, i, self._moved)
             row.profile_name = name  # type: ignore[attr-defined]
-            row.add_prefix(profile_icon(profiles[name], 16))
+            row.add_prefix(profile_icon(profiles[name], 28))
             is_default = name == default
             star = Gtk.Button(icon_name="starred-symbolic" if is_default else "non-starred-symbolic", css_classes=["flat"],
                               valign=Gtk.Align.CENTER,

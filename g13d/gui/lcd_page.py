@@ -7,16 +7,17 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 from PIL import ImageDraw  # noqa: E402
 
 from g13d.config.model import Profile, Settings  # noqa: E402
 from g13d.lcd.framebuffer import HEIGHT, WIDTH, new_image  # noqa: E402
+from g13d.lcd.mpris import PATH, PLAYER_IFACE, PREFIX, ROOT_IFACE, MprisWatcher  # noqa: E402
 from g13d.lcd.pages import BUILTIN, page_options  # noqa: E402
 
 from .color_picker import ColorPicker  # noqa: E402
 from .dnd import make_reorderable  # noqa: E402
-from .widgets import WidePage  # noqa: E402
+from .widgets import WidePage, led_color  # noqa: E402
 
 _PAGE_TITLES = {"status": "Status", "clock": "Clock", "profiles": "Profiles", "system": "System", "media": "Media",
                 "text": "Text", "blank": "Blank"}
@@ -24,9 +25,12 @@ _PAGE_SUBTITLES = {"status": "Profile, mode and time. LCD keys: M1 M2 M3, next p
                    "clock": "Analog dial (style below), time and date",
                    "profiles": "Pick a profile on the panel. LCD keys 1–3 (up, down, activate) are reserved while it is shown",
                    "system": "CPU, temperature, memory, network",
-                   "media": "Now playing (MPRIS). LCD keys: previous, play/pause, next, next player",
+                   "media": "Now playing (MPRIS). LCD keys 1–4 (previous, play/pause, next, next player) are reserved while it is shown",
                    "text": "Free text sent with: g13ctl lcd-text -s 0 \"…\"",
                    "blank": "All pixels off"}
+
+
+LIVE_PAGES = ("status", "clock", "system", "media")
 
 
 class _Ctx:
@@ -42,13 +46,62 @@ class _Ctx:
     def set_locked_profile(self, n): ...
 
 
+class PreviewMedia:
+    """The MPRIS players on the session bus, read with Gio for the media page preview (the daemon's watcher
+    runs on asyncio). Same selection logic as on the device; LCD4 cannot be pressed in the preview."""
+
+    def __init__(self) -> None:
+        self.watcher = MprisWatcher()
+
+    def poll(self) -> None:
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            (names,) = bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames",
+                                     None, None, Gio.DBusCallFlags.NONE, 500, None).unpack()
+        except GLib.Error:
+            return
+        w = self.watcher
+        found = {}
+        for name in (n for n in names if n.startswith(PREFIX)):
+            found[name] = w.players[name].identity if name in w.players else self._get(bus, name, ROOT_IFACE, "Identity")
+        w.set_players(found)
+        for name in found:
+            try:
+                (props,) = bus.call_sync(name, PATH, "org.freedesktop.DBus.Properties", "GetAll",
+                                         GLib.Variant("(s)", (PLAYER_IFACE,)), None, Gio.DBusCallFlags.NONE, 300, None).unpack()
+            except GLib.Error:
+                continue
+            w.update(name, props)
+
+    @staticmethod
+    def _get(bus, name: str, iface: str, prop: str) -> str:
+        try:
+            (v,) = bus.call_sync(name, PATH, "org.freedesktop.DBus.Properties", "Get", GLib.Variant("(ss)", (iface, prop)),
+                                 None, Gio.DBusCallFlags.NONE, 300, None).unpack()
+        except GLib.Error:
+            return ""
+        return str(v)
+
+
+def panel_colors(backlight: tuple[int, int, int]) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """(background, lit pixel) as the panel looks: the backlight as lit (led_color), dimmed by the panel; lit
+    pixels are pale but translucent, so they take the light's tint."""
+    lit = led_color(backlight)
+    if lit is None:
+        return (24, 24, 28), (60, 60, 66)            # backlight off: dark panel, faint pixels
+    bg = tuple(int(c * 0.5 + 255 * 0.03) for c in lit)   # well below the bare LED, slightly washed out
+    ink = tuple(int(c * 0.35 + 255 * 0.65) for c in bg)  # lit pixels are translucent: tinted by the light
+    return bg, ink  # type: ignore[return-value]
+
+
 def render_preview(page_name: str, profile_name: str, mode: int, backlight: tuple[int, int, int], scale: int = 2,
-                   options: dict[str, str] | None = None, profiles: list[str] | None = None) -> Gdk.Texture | None:
+                   options: dict[str, str] | None = None, profiles: list[str] | None = None,
+                   media: MprisWatcher | None = None) -> Gdk.Texture | None:
     """Render a page exactly like the daemon does; lit pixels are dark on the backlit panel."""
     cls = BUILTIN.get(page_name)
     if cls is None:
         return None
-    page = cls()
+    page = cls(media) if page_name == "media" and media is not None else cls()
     page.configure(options or {})
     img = new_image()
     try:
@@ -57,14 +110,12 @@ def render_preview(page_name: str, profile_name: str, mode: int, backlight: tupl
         page.render(ImageDraw.Draw(img), img, ctx)
     except Exception:  # noqa: BLE001
         pass
-    r, g, b = backlight
-    # the backlight shines through the panel: never fully dark so the preview stays readable
-    bg = (max(r, 40), max(g, 40), max(b, 40))
+    bg, ink = panel_colors(backlight)
     rgb = img.convert("RGB").resize((WIDTH * scale, HEIGHT * scale), resample=0)
     px = rgb.load()
     for y in range(rgb.height):
         for x in range(rgb.width):
-            px[x, y] = (18, 18, 22) if px[x, y][0] else bg
+            px[x, y] = ink if px[x, y][0] else bg
     data = GLib.Bytes.new(rgb.tobytes())
     pb = GdkPixbuf.Pixbuf.new_from_bytes(data, GdkPixbuf.Colorspace.RGB, False, 8, rgb.width, rgb.height, rgb.width * 3)
     return Gdk.Texture.new_for_pixbuf(pb)
@@ -77,6 +128,11 @@ class LcdPage(WidePage):
         self._on_change = on_change
         self._on_settings_change = on_settings_change
         self._on_live = on_live_backlight
+        self._media = PreviewMedia()
+        self._tick = 0
+        # live pages (clock, system, media) are redrawn every second while the tab is on screen
+        self.connect("map", lambda *_: self._start_ticking())
+        self.connect("unmap", lambda *_: self._stop_ticking())
         self._settings = Settings()
         self._profile: Profile | None = None
         self._profiles: list[str] = []
@@ -119,8 +175,8 @@ class LcdPage(WidePage):
         self._picture.add_css_class("g13-preview")
         pg.add(self._picture)
         self._preview_note = Gtk.Label(css_classes=["dim-label", "caption"], wrap=True, justify=Gtk.Justification.CENTER,
-                                       label="Rendered with the same code as the device. Live data (media, system, text) "
-                                             "differs from what the daemon currently shows.")
+                                       label="Rendered with the same code as the device; clock, system and media "
+                                             "show live data.")
         pg.add(self._preview_note)
 
     # ---- state --------------------------------------------------------------
@@ -224,10 +280,27 @@ class LcdPage(WidePage):
             self._on_live(*self._profile.backlight)
         return False
 
+    def _start_ticking(self) -> None:
+        if not self._tick:
+            self._tick = GLib.timeout_add(1000, self._on_tick)
+        self._refresh_preview()
+
+    def _stop_ticking(self) -> None:
+        if self._tick:
+            GLib.source_remove(self._tick)
+            self._tick = 0
+
+    def _on_tick(self) -> bool:
+        if (self._preview_select.get_active_name() or "status") in LIVE_PAGES:
+            self._refresh_preview()
+        return True
+
     def _refresh_preview(self) -> None:
         name = self._preview_select.get_active_name() or "status"
+        if name == "media":
+            self._media.poll()
         tex = render_preview(name, self._profile.name if self._profile else "Profile", self._mode,
                              self._profile.backlight if self._profile else (51, 153, 255),
-                             options=self._settings.lcd_options, profiles=self._profiles)
+                             options=self._settings.lcd_options, profiles=self._profiles, media=self._media.watcher)
         if tex is not None:
             self._picture.set_paintable(tex)
