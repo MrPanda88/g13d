@@ -1,9 +1,9 @@
 """Main window. Two layouts, switched live from the menu:
 
-- gtk: profile sidebar on the left, Keys / Stick / LCD & Light / Macros tabs, schematic keypad
-- lgs: assignment library on the left, the photo of the G13 with drag-and-drop targets, profile tiles
+- lgs (default): assignment library on the left, the photo of the G13 with drag-and-drop targets, profile tiles
        along the bottom (after Logitech Gaming Software); no Macros tab: a macro is created and edited from
        the library, its editor taking the place of the photo
+- gtk: profile sidebar on the left, Keys / Stick / LCD & Light / Macros tabs, schematic keypad
 """
 from __future__ import annotations
 
@@ -259,8 +259,8 @@ class MainWindow(Adw.ApplicationWindow):
         from gi.repository import Gio
         menu = Gio.Menu()
         layout = Gio.Menu()
-        layout.append("GTK", "app.layout::gtk")
         layout.append("LGS", "app.layout::lgs")
+        layout.append("GTK", "app.layout::gtk")
         menu.append_submenu("Layout", layout)
         menu.append("Reload configuration", "app.reload")
         menu.append("Open configuration folder", "app.open-config")

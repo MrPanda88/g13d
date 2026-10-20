@@ -12,7 +12,7 @@ BINDABLE = G_KEYS + LCD_KEYS + STICK_DIRS + STICK_BUTTONS + ("LIGHT",)
 MODES = (1, 2, 3)
 STICK_MODES = ("keys", "mouse", "scroll", "passthrough")
 ACTION_TYPES = ("none", "key", "combo", "macro", "mouse", "mode", "profile", "lcd_page")
-GUI_LAYOUTS = ("gtk", "lgs")
+GUI_LAYOUTS = ("lgs", "gtk")
 LIBRARY_SORTS = ("added", "name", "type")
 MACRO_STYLES = ("flow", "icons", "timeline")
 DEFAULT_LCD_PAGES = ("status", "clock", "system", "media")
@@ -288,7 +288,7 @@ class Settings:
     default_profile: profile loaded when the daemon starts; empty = restore the last used one.
     auto_profiles: switch to the profile linked to the focused application (needs the GNOME Shell extension).
     lcd_pages / lcd_options: the LCD pages shown (same whatever the profile) and their settings ([lcd]).
-    gui_layout: how g13-gui arranges its window ([gui] layout): "gtk" (classic widgets) or "lgs" (device picture).
+    gui_layout: how g13-gui arranges its window ([gui] layout): "lgs" (device picture, the default) or "gtk" (classic widgets).
     gui_library_sort: order of the assignments panel ([gui] library_sort): "added", "name" or "type".
     gui_macro_style: how the macro editor draws the steps ([gui] macro_style): "flow", "icons" or "timeline".
     """
@@ -299,7 +299,7 @@ class Settings:
     profile_order: list[str] = field(default_factory=list)   # display / cycling order; unknown names go last, A-Z
     lcd_pages: list[str] = field(default_factory=lambda: list(DEFAULT_LCD_PAGES))
     lcd_options: dict[str, str] = field(default_factory=dict)
-    gui_layout: str = "gtk"
+    gui_layout: str = "lgs"
     gui_library_sort: str = "added"
     gui_macro_style: str = "flow"
     lcd_configured: bool = field(default=True, compare=False)   # False: the file had no [lcd] table yet
@@ -309,7 +309,7 @@ class Settings:
         g = d.get("general", d) or {}
         gui = d.get("gui", {}) or {}
         lcd = d.get("lcd")
-        layout = str(gui.get("layout", "gtk"))
+        layout = str(gui.get("layout", "lgs"))
         layout = _LAYOUT_ALIASES.get(layout, layout)
         sort = str(gui.get("library_sort", "added"))
         macro_style = str(gui.get("macro_style", "flow"))
@@ -322,7 +322,7 @@ class Settings:
             profile_order=[str(x) for x in g.get("profile_order", []) or []],
             lcd_pages=[str(x) for x in pages] if isinstance(pages, list) and pages else list(DEFAULT_LCD_PAGES),
             lcd_options={str(k): str(v) for k, v in ((lcd or {}).get("options", {}) or {}).items()},
-            gui_layout=layout if layout in GUI_LAYOUTS else "gtk",
+            gui_layout=layout if layout in GUI_LAYOUTS else "lgs",
             gui_library_sort=sort if sort in LIBRARY_SORTS else "added",
             gui_macro_style=macro_style if macro_style in MACRO_STYLES else "flow",
             lcd_configured=isinstance(lcd, dict),

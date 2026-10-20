@@ -40,7 +40,7 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   manual switch to another profile releases it
 - `g13d/gui/`: GTK4/libadwaita app `g13-gui`; `g13d/cli/`: `g13ctl`
   - two layouts built by `window.py:_build()` and switched live (`[gui] layout` in config.toml, menu ☰ → Layout):
-    `gtk` (KeysPage grid + ProfilesSidebar) and `lgs` (DevicePage photo + LibraryPanel + ProfilesBar); the pre-1.1
+    `lgs` (default: DevicePage photo + LibraryPanel + ProfilesBar) and `gtk` (KeysPage grid + ProfilesSidebar); the pre-1.1
     names `classic` / `device` are still accepted in config.toml
   - macros: `macros_page.MacroEditor` edits one macro; the gtk layout wraps it in the Macros tab (`MacrosPage`, list +
     editor), the lgs layout has no Macros tab: macros are created (+ on the library's Macros section) and edited
@@ -83,7 +83,7 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 - Low-level probes: `scripts/probe.py`, `evcap.py`, `led_test.py`, `lcd_test.py`, `lcd_bounds.py`
   (the active LCD area is exactly 160×43; the backlit window is physically larger than the pixel matrix)
 - LCD pages without hardware: `scripts/render_pages.py DIR`, then look at the PNGs
-- GUI screenshots without watching: `g13-gui --tab keys|stick|lcd|macros [--mode 2] [--edit G1] [--layout gtk|lgs]
+- GUI screenshots without watching: `g13-gui --tab keys|stick|lcd|macros [--mode 2] [--edit G1] [--layout lgs|gtk]
   [--size 900x600] --screenshot out.png` (the window shows for 2 s). Layout-aware labels only appear once the window
   has had focus (Wayland keymap)
 
