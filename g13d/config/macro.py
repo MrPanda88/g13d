@@ -8,8 +8,8 @@ A macro is a list of steps played by the daemon's virtual input device:
     { delay = 50 }               wait, milliseconds
 
 repeat: "once" (play fully on press), "while_held" (loop until the G-key is released),
-"toggle" (press starts the loop, next press stops it). repeat_delay is the pause in
-milliseconds between two iterations.
+"toggle" (press starts the loop, next press stops it), "count" (play `count` times; a press while
+it plays stops it). repeat_delay is the pause in milliseconds between two iterations.
 """
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from .model import ConfigError
 
 STEP_KINDS = ("press", "release", "tap", "delay")
-REPEAT_MODES = ("once", "while_held", "toggle")
+REPEAT_MODES = ("once", "while_held", "toggle", "count")
+MAX_COUNT = 9999
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,7 @@ class Macro:
     repeat: str = "once"
     repeat_delay_ms: int = 0
     description: str = ""
+    repeat_count: int = 2               # number of plays in "count" mode
 
     @classmethod
     def from_toml(cls, d: dict, fallback_name: str = "macro") -> Macro:
@@ -90,10 +92,13 @@ class Macro:
             repeat=repeat,
             repeat_delay_ms=max(0, int(d.get("repeat_delay", 0))),
             description=str(d.get("description", "")),
+            repeat_count=min(MAX_COUNT, max(1, int(d.get("count", 2)))),
         )
 
     def to_toml(self) -> dict:
         out: dict = {"name": self.name, "repeat": self.repeat}
+        if self.repeat == "count":
+            out["count"] = self.repeat_count
         if self.repeat_delay_ms:
             out["repeat_delay"] = self.repeat_delay_ms
         if self.description:
@@ -105,6 +110,10 @@ class Macro:
     def duration_ms(self) -> int:
         return sum(s.ms for s in self.steps if s.kind == "delay")
 
+    def copy(self, name: str | None = None) -> Macro:
+        return Macro(self.name if name is None else name, list(self.steps), self.repeat, self.repeat_delay_ms,
+                     self.description, self.repeat_count)
+
     def keys_used(self) -> list[str]:
         seen: list[str] = []
         for s in self.steps:
@@ -115,7 +124,7 @@ class Macro:
 
 EXAMPLE_MACRO_TOML = '''# Example macro for g13d. Bind it in a profile with:  G9 = { macro = "example" }
 # Steps: { press = "KEY_X" }  { release = "KEY_X" }  { tap = "KEY_X" }  { delay = 50 }  (ms)
-# repeat: "once" | "while_held" | "toggle"       repeat_delay: pause between loops, ms
+# repeat: "once" | "while_held" | "toggle" | "count" (with count = N)   repeat_delay: pause between loops, ms
 #
 # Key names are physical positions (evdev): KEY_A is the key left of S, which types "q" on
 # an AZERTY layout. This example only uses layout-independent keys. The GUI records keys by

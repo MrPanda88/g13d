@@ -35,7 +35,7 @@ class MacroPlayer:
             return
         running = name in self._tasks and not self._tasks[name].done()
         if pressed:
-            if macro.repeat == "toggle" and running:
+            if macro.repeat in ("toggle", "count") and running:
                 self.stop(name)
                 return
             self.start(macro)
@@ -68,8 +68,10 @@ class MacroPlayer:
 
     async def _run(self, macro: Macro) -> None:
         held: set[int] = set()
+        plays = 0
         try:
             while True:
+                plays += 1
                 for step in macro.steps:
                     if step.kind == "delay":
                         if step.ms:
@@ -89,7 +91,8 @@ class MacroPlayer:
                         self._vi.key(code, False)
                         held.discard(code)
                     await asyncio.sleep(0)  # keep the loop responsive even without delays
-                if macro.repeat == "once" or macro.name in self._finish:
+                if macro.repeat == "once" or macro.name in self._finish or \
+                        (macro.repeat == "count" and plays >= macro.repeat_count):
                     break
                 await asyncio.sleep(max(macro.repeat_delay_ms, 1) / 1000)
         except asyncio.CancelledError:

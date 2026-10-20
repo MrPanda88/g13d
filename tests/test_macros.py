@@ -140,3 +140,39 @@ def test_recorder_without_delays():
     r.start()
     r.event("KEY_A", True, 0); r.event("KEY_A", False, 5)
     assert MacroRecorder.simplify(r.stop()) == [Step.tap("KEY_A")]
+
+
+def test_count_mode_roundtrip_and_validation():
+    m = Macro("m", [Step.tap("KEY_A")], repeat="count", repeat_count=5)
+    text = tomlout.dumps(m.to_toml())
+    assert "count = 5" in text
+    assert Macro.from_toml(tomllib.loads(text)) == m
+    assert Macro.from_toml({"repeat": "count", "count": 0}).repeat_count == 1
+    assert "count" not in Macro("m", repeat="once", repeat_count=5).to_toml()
+
+
+def test_count_plays_n_times():
+    async def run():
+        vi = FakeInput()
+        m = Macro("m", [Step.tap("KEY_A")], repeat="count", repeat_count=3)
+        p = _player(vi, {"m": m})
+        p.trigger("m", True); p.trigger("m", False)
+        await asyncio.sleep(0.05)
+        assert sum(1 for e in vi.events if e == ("key", A, True)) == 3
+        assert p.active == []
+    asyncio.run(run())
+
+
+def test_count_stopped_by_second_press():
+    async def run():
+        vi = FakeInput()
+        m = Macro("m", [Step.tap("KEY_A"), Step.delay(10)], repeat="count", repeat_count=1000)
+        p = _player(vi, {"m": m})
+        p.trigger("m", True); p.trigger("m", False)
+        await asyncio.sleep(0.05)
+        assert p.active == ["m"]
+        p.trigger("m", True)
+        await asyncio.sleep(0.02)
+        assert p.active == []
+        assert sum(1 for e in vi.events if e == ("key", A, True)) < 1000
+    asyncio.run(run())

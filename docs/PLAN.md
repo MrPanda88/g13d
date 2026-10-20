@@ -57,7 +57,7 @@ Profile (TOML file)
 
 ### 1.5 Macros
 - TOML files in `~/.config/g13d/macros/<name>.toml`: steps `press`, `release`, `tap`, `delay`.
-- Asynchronous, cancellable playback; repeat modes: once, while held (the current pass always completes), toggle.
+- Asynchronous, cancellable playback; repeat modes: once, while held (the current pass always completes), toggle, count (N plays, a press stops it).
 - **Recording happens in the GUI** (no privilege needed): the window has focus, you type, GTK provides keycodes and
   delays. Recording from the MR key alone would require reading the physical keyboard's evdev nodes, which GNOME does
   not grant without the `input` group: not done.

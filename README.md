@@ -27,7 +27,7 @@ Features (see `docs/PLAN.md` for the roadmap):
 - M1 / M2 / M3 modes with synced LEDs, per-profile RGB backlight
 - Profiles in plain TOML files
 - 160×43 LCD: status, analog clock (several dials), profile picker, system (CPU/RAM/net), media (MPRIS now-playing with transport buttons), free text and blank pages; messages from scripts over D-Bus
-- Macros: press/release/tap/delay steps, play once / while held / toggle, recorder in the GUI
+- Macros: press/release/tap/delay steps, play once / while held / toggle / N times, recorder in the GUI (replace or insert, undo/redo, change a key and its release at once)
 - `systemd --user` service, udev rule, D-Bus API `org.g13d`
 
 ## Requirements
@@ -130,7 +130,7 @@ One TOML file per macro in `~/.config/g13d/macros/`, bound with `{ macro = "name
 ```toml
 name = "example"
 description = "Select the current line and copy it"
-repeat = "once"            # once | while_held | toggle
+repeat = "once"            # once | while_held | toggle | count (with count = N; a new press stops it)
 repeat_delay = 0           # ms between loops
 steps = [
   { tap = "KEY_HOME" },

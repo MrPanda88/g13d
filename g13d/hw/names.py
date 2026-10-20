@@ -65,3 +65,8 @@ KEY_LABELS = {
     "BTN_LEFT": "Mouse L", "BTN_RIGHT": "Mouse R", "BTN_MIDDLE": "Mouse M", "BTN_SIDE": "Mouse 4", "BTN_EXTRA": "Mouse 5",
     "BTN_FORWARD": "Mouse Fwd", "BTN_BACK": "Mouse Back", "BTN_TASK": "Mouse Task",
 }
+
+
+# keys whose hold changes the keys pressed meanwhile (never simplified into taps)
+MODIFIERS = frozenset({"KEY_LEFTCTRL", "KEY_RIGHTCTRL", "KEY_LEFTSHIFT", "KEY_RIGHTSHIFT", "KEY_LEFTALT", "KEY_RIGHTALT",
+                       "KEY_LEFTMETA", "KEY_RIGHTMETA"})
