@@ -46,7 +46,21 @@ Features (see `docs/PLAN.md` for the roadmap):
 All Python dependencies are declared in `pyproject.toml`; `pip` resolves them if the distro
 packages are missing.
 
-## Install (single user)
+## Install on Fedora (COPR)
+
+Packages for Fedora 43, 44 and rawhide are built on [COPR](https://copr.fedorainfracloud.org/coprs/mrdodo/g13d/):
+
+```sh
+sudo dnf copr enable mrdodo/g13d
+sudo dnf install g13d
+systemctl --user enable --now g13d
+```
+
+Then replug the G13 so the udev rule gives you access to it, and open *G13 Configuration*.
+Per-application profiles need the GNOME Shell extension, installed with `g13d` by default
+(`gnome-shell-extension-g13d`): `gnome-extensions enable g13d@g13d.org`, then log out and back in.
+
+## Install from source (single user)
 
 ```sh
 git clone https://github.com/MrPanda88/g13d && cd g13d
