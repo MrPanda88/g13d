@@ -42,6 +42,13 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   - two layouts built by `window.py:_build()` and switched live (`[gui] layout` in config.toml, menu ☰ → Layout):
     `gtk` (KeysPage grid + ProfilesSidebar) and `lgs` (DevicePage photo + LibraryPanel + ProfilesBar); the pre-1.1
     names `classic` / `device` are still accepted in config.toml
+  - macros: `macros_page.MacroEditor` edits one macro; the gtk layout wraps it in the Macros tab (`MacrosPage`, list +
+    editor), the lgs layout has no Macros tab: macros are created (+ on the library's Macros section) and edited
+    (right-click) from the library, the editor replacing the G13 photo (`_keys_stack`, back button or Esc).
+    Steps are drawn by `macro_steps.py` in three styles (`[gui] macro_style`: icons / flow / timeline); every change
+    of the steps goes through `MacroEditor._change` (undo history, redraw, save); pure helpers (press/release
+    partner, key replacement, `merge_taps`, `History`) live in `config/macro_edit.py`. Right-click a step:
+    Insert before / after (sets the insertion mark used by Add step and Record)
   - `device_geometry.py`: normalised rects of every control on `data/g13.png` (pure data, tested);
     `DeviceView` scales the photo to fit and places the overlays from them, so nothing drifts on resize
   - `data/g13.png` is generated from `image/g13_naked_template.jpeg` (user-supplied, legends already removed) by
@@ -82,12 +89,16 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
 
 ## Working rules
 - **Consistent UI**: a given kind of control behaves the same everywhere. Text fields = applied on Enter, ✓ button
-  or focus loss (`MacrosPage._text_row`); reorderable lists = arrows + drag-and-drop; deletions = `Adw.AlertDialog`
+  or focus loss, Enter / ✓ / a click elsewhere end the editing (`widgets.text_row`); reorderable lists = arrows + drag-and-drop; deletions = `Adw.AlertDialog`
   confirmation; page width = `WidePage` (1100 px); key labels = `keymap.key_label`; context menus = right-click
-  `Gtk.PopoverMenu` parented to a widget whose children are never cleared (clearing loops on the popover)
-- Keys accept dropped assignments in both layouts (`dnd.make_action_target`); an assignment made anywhere lands in
-  the library (`MainWindow._assign`). A key shows its assignment's **library name** (`MainWindow._label_for`), the
-  tooltip the layout-aware value. Profile commands are identical in both layouts (`profiles_ui.profile_menu`), and so
+  `Gtk.PopoverMenu` parented to a widget whose children are never cleared (clearing loops on the popover);
+  tooltips only name things (Undo, Refresh…): a behaviour that needs explaining gets a `widgets.info_button` ⓘ
+  next to it (hover or click), never a tooltip alone
+- Keys accept dropped assignments in both layouts (`dnd.make_action_target`) and are drag sources themselves: a key
+  dropped on another moves its assignment (source emptied, target replaced; payload carries `from`). Drag icons are
+  `dnd.drag_icon` pills (accent colours), never a snapshot of the widget (invisible over the black photo). An
+  assignment made anywhere lands in the library (`MainWindow._assign`). A key shows its assignment's **library name**
+  (`MainWindow._label_for`), the tooltip the layout-aware value. Profile commands are identical in both layouts (`profiles_ui.profile_menu`), and so
   is the right-click menu on keys (`widgets.attach_key_menu`: Edit… / Unassign)
 - Short key names (`hw/names.py:KEY_LABELS`) are shared by `Action.describe()` (library labels, layout-agnostic) and
   `keymap.key_label()` (layout-aware); keep both in sync when adding keys

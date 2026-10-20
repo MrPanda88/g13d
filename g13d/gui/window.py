@@ -2,7 +2,8 @@
 
 - gtk: profile sidebar on the left, Keys / Stick / LCD & Light / Macros tabs, schematic keypad
 - lgs: assignment library on the left, the photo of the G13 with drag-and-drop targets, profile tiles
-       along the bottom (after Logitech Gaming Software)
+       along the bottom (after Logitech Gaming Software); no Macros tab: a macro is created and edited from
+       the library, its editor taking the place of the photo
 """
 from __future__ import annotations
 
@@ -19,10 +20,11 @@ from g13d import __version__  # noqa: E402
 from g13d.config.appicons import find_icon, is_auto_icon  # noqa: E402
 from g13d.config.library import LibraryEntry  # noqa: E402
 from g13d.config.loader import ConfigStore  # noqa: E402
+from g13d.config.macro import Macro  # noqa: E402
 from g13d.config.model import GUI_LAYOUTS, MODES, Action, Profile, Settings, order_profiles  # noqa: E402
 
 from .action_editor import ActionEditor  # noqa: E402
-from .widgets import focus_entry  # noqa: E402
+from .widgets import end_edit_on_click, focus_entry  # noqa: E402
 from .app_dialog import AppDialog  # noqa: E402
 from .client import DaemonClient  # noqa: E402
 from .device_view import DevicePage  # noqa: E402
@@ -30,7 +32,7 @@ from .keymap import action_label, watch_keymap  # noqa: E402
 from .keys_page import KeysPage  # noqa: E402
 from .lcd_page import LcdPage  # noqa: E402
 from .library_panel import LibraryPanel  # noqa: E402
-from .macros_page import MacrosPage  # noqa: E402
+from .macros_page import MacroEditor, MacrosPage, confirm_delete_macro, unique_macro_name  # noqa: E402
 from .profiles_ui import ProfilesBar, ProfilesSidebar  # noqa: E402
 from .stick_page import StickPage  # noqa: E402
 
@@ -48,6 +50,9 @@ CSS = """
 .g13-preview { border-radius: 6px; }
 .g13-step-delay { color: alpha(@view_fg_color, 0.7); }
 .g13-dragging { opacity: 0.4; }
+.g13-info { min-width: 24px; min-height: 24px; padding: 0; color: @accent_color; }
+.g13-drag-icon { background: @accent_bg_color; color: @accent_fg_color; border-radius: 6px; padding: 4px 10px;
+                 margin: 6px; box-shadow: 0 1px 4px alpha(black, 0.5); font-weight: bold; }
 .g13-drop { box-shadow: inset 0 2px 0 0 @accent_bg_color; }
 
 /* device layout: overlays on the photo */
@@ -93,7 +98,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._updating = False
         self._seen_daemon_profile: str | None = None
         self._seen_daemon_mode: int | None = None
-        self._macros: MacrosPage | None = None
+        self._macro_editor: MacroEditor | None = None
 
         provider = Gtk.CssProvider()
         provider.load_from_string(CSS)
@@ -107,6 +112,7 @@ class MainWindow(Adw.ApplicationWindow):
         # refresh the layout-aware labels whenever we (re)gain it.
         watch_keymap(self.refresh_labels)
         self.connect("notify::is-active", lambda *_: self.refresh_labels())
+        end_edit_on_click(self)
         client.connect("changed", lambda *_: self._sync_from_daemon())
         client.connect("key-event", self._on_key_event)
         client.connect("error", lambda _c, msg: self.toast(msg))
@@ -133,8 +139,8 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _build(self) -> None:
         """(Re)create everything under the toast overlay for the current layout."""
-        if self._macros is not None:
-            self._macros.detach_window_controller(self)
+        if self._macro_editor is not None:
+            self._macro_editor.detach_window_controller(self)
         header = Adw.HeaderBar()
         self._stack = Adw.ViewStack()
         switcher = Adw.ViewSwitcher(stack=self._stack, policy=Adw.ViewSwitcherPolicy.WIDE)
@@ -149,18 +155,23 @@ class MainWindow(Adw.ApplicationWindow):
 
         self._stick = StickPage(self._profile_changed)
         self._lcd = LcdPage(self._profile_changed, self._settings_changed, self._client.set_backlight)
-        self._macros = MacrosPage(self._store, self._client, self.toast, self._macros_changed, self._retarget)
-        self._macros.attach_window_controller(self)
+        self._macros_page: MacrosPage | None = None
         self._library_panel: LibraryPanel | None = None
 
         if self._layout == "lgs":
             self._keys = DevicePage(self._edit_control, self._mode_selected, self._drop_action,
                                     lambda: self.show_tab("stick"), self._label_for, self._unassign)
-            keys_widget: Gtk.Widget = self._keys
+            self._macro_editor = MacroEditor(self._store, self._client, self.toast, lambda _renamed: self._macros_changed(),
+                                             self._retarget, self._settings.gui_macro_style, self._macro_style_changed)
+            # the Keys tab shows the G13, or the macro being edited in its place
+            self._keys_stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+            self._keys_stack.add_named(self._keys, "device")
+            self._keys_stack.add_named(self._macro_screen(), "macro")
+            keys_widget: Gtk.Widget = self._keys_stack
             self._profiles_ui = ProfilesBar(self._profile_picked, self._profile_command)
             content.add_bottom_bar(self._profiles_ui)
             self._library_panel = LibraryPanel(self._library_new, self._library_edit, self._library_rename, self._library_remove,
-                                               self._settings.gui_library_sort, self._library_sort_changed)
+                                               self._macro_command, self._settings.gui_library_sort, self._library_sort_changed)
             side = Adw.ToolbarView()
             side_header = Adw.HeaderBar(show_end_title_buttons=False)
             side_header.set_title_widget(Gtk.Label(label="Assignments", css_classes=["heading"]))
@@ -191,6 +202,9 @@ class MainWindow(Adw.ApplicationWindow):
             root: Gtk.Widget = split
         else:
             self._keys = KeysPage(self._edit_control, self._mode_selected, self._drop_action, self._label_for, self._unassign)
+            self._macros_page = MacrosPage(self._store, self._client, self.toast, self._macros_changed, self._retarget,
+                                           self._settings.gui_macro_style, self._macro_style_changed)
+            self._macro_editor = self._macros_page.editor
             keys_widget = Gtk.ScrolledWindow(child=self._keys, hscrollbar_policy=Gtk.PolicyType.AUTOMATIC)
             self._profiles_ui = ProfilesSidebar(self._profile_picked, self._profile_command)
             nav = Adw.NavigationSplitView(min_sidebar_width=200, max_sidebar_width=260)
@@ -201,7 +215,9 @@ class MainWindow(Adw.ApplicationWindow):
         self._stack.add_titled_with_icon(keys_widget, "keys", "Keys", "input-keyboard-symbolic")
         self._stack.add_titled_with_icon(self._stick, "stick", "Stick", "input-gaming-symbolic")
         self._stack.add_titled_with_icon(self._lcd, "lcd", "LCD & Light", "video-display-symbolic")
-        self._stack.add_titled_with_icon(self._macros, "macros", "Macros", "media-record-symbolic")
+        if self._macros_page is not None:
+            self._stack.add_titled_with_icon(self._macros_page, "macros", "Macros", "media-record-symbolic")
+        self._macro_editor.attach_window_controller(self)
         content.set_content(self._stack)
         self._status = self._profiles_ui.status
         self._toasts.set_child(root)
@@ -213,6 +229,31 @@ class MainWindow(Adw.ApplicationWindow):
     # ---- helpers ------------------------------------------------------------------
     def toast(self, message: str) -> None:
         self._toasts.add_toast(Adw.Toast(title=message, timeout=4))
+
+    def _macro_screen(self) -> Gtk.Widget:
+        """lgs layout: the macro editor with a way back to the G13."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        bar = Gtk.Box(spacing=6, margin_start=12, margin_end=12, margin_top=8)
+        back = Gtk.Button(tooltip_text="Back to the G13 (Esc)")
+        inner = Gtk.Box(spacing=6)
+        inner.append(Gtk.Image.new_from_icon_name("go-previous-symbolic"))
+        inner.append(Gtk.Label(label="G13"))
+        back.set_child(inner)
+        back.connect("clicked", lambda *_: self._close_macro())
+        bar.append(back)
+        bar.append(Gtk.Label(label="Macro", css_classes=["title-4"], hexpand=True))
+        for icon, tip, cmd in (("edit-copy-symbolic", "Duplicate", "duplicate"), ("user-trash-symbolic", "Delete…", "delete")):
+            b = Gtk.Button(icon_name=icon, tooltip_text=tip, css_classes=["flat"])
+            b.connect("clicked", lambda _b, c=cmd: self._macro_editor.current is not None and
+                      self._macro_command(c, self._macro_editor.current.name))
+            bar.append(b)
+        box.append(bar)
+        box.append(self._macro_editor)
+        esc = Gtk.ShortcutController()
+        esc.add_shortcut(Gtk.Shortcut.new(Gtk.ShortcutTrigger.parse_string("Escape"),
+                                          Gtk.CallbackAction.new(lambda *_: (self._close_macro(), True)[1])))
+        box.add_controller(esc)
+        return box
 
     def _menu(self):
         from gi.repository import Gio
@@ -551,12 +592,15 @@ class MainWindow(Adw.ApplicationWindow):
         self._keys.refresh()
         self._profile_changed()
 
-    def _drop_action(self, control: str, action: Action) -> bool:
-        """An assignment was dropped on a key."""
-        if self._profile is None:
+    def _drop_action(self, control: str, action: Action, source: str | None = None) -> bool:
+        """An assignment was dropped on a key: from the library, or from the key `source` (a move: that key
+        ends up unassigned, whatever `control` had is replaced)."""
+        if self._profile is None or source == control:
             return False
+        if source is not None:
+            self._profile.set_binding(self._mode, source, Action.none())
         self._assign(control, action)
-        self.toast(f"{control} → {action_label(action)}  (M{self._mode})")
+        self.toast(f"{source or action_label(action)} → {control}  (M{self._mode})")
         return True
 
     def _profile_changed(self) -> None:
@@ -575,9 +619,56 @@ class MainWindow(Adw.ApplicationWindow):
         self._settings.gui_library_sort = order
         self._store.save_settings(self._settings)
 
+    def _macro_style_changed(self, style: str) -> None:
+        self._settings.gui_macro_style = style
+        self._store.save_settings(self._settings)
+
     def _macros_changed(self) -> None:
         self._schedule_reload()
         self._refresh_library()
+
+    # ---- macros (lgs layout: from the library, edited in place of the G13) ---------------------
+    def _macro_command(self, cmd: str, name: str) -> None:
+        macros = self._store.load_macros()
+        match cmd:
+            case "new":
+                macro = Macro(unique_macro_name("New macro", macros))
+                self._store.save_macro(macro)
+                self._macros_changed()
+                self._open_macro(macro)
+                self._macro_editor.focus_name()
+            case "edit" if name in macros:
+                self._open_macro(macros[name])
+            case "duplicate" if name in macros:
+                macro = macros[name].copy(unique_macro_name(f"{name} copy", macros))
+                self._store.save_macro(macro)
+                self._macros_changed()
+                self._open_macro(macro)
+            case "delete" if name in macros:
+                def delete() -> None:
+                    current = self._macro_editor.current
+                    if current is not None and current.name == name:
+                        self._close_macro()
+                    self._store.delete_macro(name)
+                    self._retarget("macro", name, None)
+                    self._macros_changed()
+                confirm_delete_macro(self, name, delete)
+
+    def _open_macro(self, macro: Macro) -> None:
+        if self._macros_page is not None:      # gtk layout: the Macros tab
+            self._macro_editor.edit(macro)
+            self._macros_page.reload()
+            self.show_tab("macros")
+            return
+        self._macro_editor.edit(macro)
+        self.show_tab("keys")
+        self._keys_stack.set_visible_child_name("macro")
+
+    def _close_macro(self) -> None:
+        """Back to the G13 picture (stops a recording, saves pending changes)."""
+        self._macro_editor.edit(None)
+        if self._macros_page is None:
+            self._keys_stack.set_visible_child_name("device")
 
     def _schedule_reload(self) -> None:
         if self._reload_timer:
@@ -648,7 +739,7 @@ class MainWindow(Adw.ApplicationWindow):
     # ---- misc -----------------------------------------------------------------------------
     def refresh_labels(self) -> None:
         self._keys.refresh()
-        self._macros.refresh_labels()
+        self._macro_editor.refresh_labels()
         if self._library_panel is not None:
             self._library_panel.refresh_labels()
 
@@ -659,6 +750,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._lcd.set_mode(mode)
 
     def show_tab(self, name: str) -> None:
+        if name == "macros" and self._macros_page is None:      # lgs: no tab, the first macro in place of the G13
+            if (macros := self._store.load_macros()):
+                self._open_macro(macros[sorted(macros)[0]])
+            return
         self._stack.set_visible_child_name(name)
 
     def reload_all(self, reload_daemon: bool = True) -> None:
@@ -666,7 +761,14 @@ class MainWindow(Adw.ApplicationWindow):
         self._settings = self._store.load_settings()
         self._lcd.set_settings(self._settings)
         self._load_profiles()
-        self._macros.reload()
+        if self._macros_page is not None:
+            self._macros_page.reload()
+        elif (current := self._macro_editor.current) is not None:
+            macros = self._store.load_macros()
+            if current.name in macros:
+                self._macro_editor.edit(macros[current.name])
+            else:
+                self._close_macro()
         self._refresh_library()
         if reload_daemon:
             self._schedule_reload()
@@ -701,7 +803,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _on_key_event(self, _c, name: str, pressed: bool) -> None:
         self._keys.set_pressed(name, pressed)
         if name == "MR" and pressed:
-            self._macros.toggle_record_from_device()
+            self._macro_editor.toggle_record_from_device()
 
 
 def about_dialog(parent: Gtk.Window) -> None:

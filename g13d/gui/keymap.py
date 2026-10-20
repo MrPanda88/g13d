@@ -9,11 +9,9 @@ from gi.repository import Gdk  # noqa: E402
 
 from g13d.config.model import Action  # noqa: E402
 from g13d.hw.names import KEY_LABELS as NICE  # noqa: E402
+from g13d.hw.names import MODIFIERS  # noqa: E402,F401  (re-exported)
 
 XKB_OFFSET = 8
-
-MODIFIERS = {"KEY_LEFTCTRL", "KEY_RIGHTCTRL", "KEY_LEFTSHIFT", "KEY_RIGHTSHIFT", "KEY_LEFTALT", "KEY_RIGHTALT",
-             "KEY_LEFTMETA", "KEY_RIGHTMETA"}
 
 
 def evdev_name_from_keycode(hardware_keycode: int) -> str | None:

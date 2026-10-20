@@ -12,6 +12,7 @@ from gi.repository import Adw, Gtk  # noqa: E402
 from g13d.config.model import Profile  # noqa: E402
 
 from .client import DaemonClient  # noqa: E402
+from .widgets import text_row  # noqa: E402
 
 HELP = ("The rule is matched against the window class, the application id and the process name of the focused "
         "window (case-insensitive, * allowed, e.g. steam_app_*). When that application gets the focus the G13 "
@@ -43,12 +44,7 @@ class AppDialog(Adw.Dialog):
         g = Adw.PreferencesGroup(title="Rule", description=HELP)
         page.append(g)
         # text field: applied on Enter, the check button or when it loses focus (same as every other text field)
-        self._rule = Adw.EntryRow(title="Window class, app id or process", show_apply_button=True, text=profile.app)
-        self._rule.connect("apply", lambda *_: self._apply())
-        self._rule.connect("entry-activated", lambda *_: self._apply())
-        focus = Gtk.EventControllerFocus()
-        focus.connect("leave", lambda *_: self._apply())
-        self._rule.add_controller(focus)
+        self._rule = text_row("Window class, app id or process", self._apply, text=profile.app)
         g.add(self._rule)
         clear = Adw.ActionRow(title="No application", subtitle="Never switch to this profile automatically", activatable=True)
         clear.add_suffix(Gtk.Image.new_from_icon_name("edit-clear-symbolic"))

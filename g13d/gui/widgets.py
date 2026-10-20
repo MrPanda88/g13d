@@ -15,6 +15,61 @@ def focus_entry(entry: Gtk.Widget) -> None:
     GLib.timeout_add(60, lambda: (entry.grab_focus(), False)[1])
 
 
+def text_row(title: str, apply: Callable[[], None], **props) -> Adw.EntryRow:
+    """The text field of the app: applied on Enter, on the check button or when the field loses focus (clicking
+    anywhere else, see end_edit_on_click). Enter and the check button also end the editing, unless apply() flagged
+    the row with the "error" style class (e.g. a name already taken)."""
+    row = Adw.EntryRow(title=title, show_apply_button=True, **props)
+    row.add_css_class("g13-text-row")
+
+    def done(*_):
+        apply()
+        root = row.get_root()
+        if not row.has_css_class("error") and root is not None:
+            root.set_focus(None)
+    row.connect("apply", done)
+    row.connect("entry-activated", done)
+    focus = Gtk.EventControllerFocus()
+    focus.connect("leave", lambda *_: apply())
+    row.add_controller(focus)
+    return row
+
+
+def end_edit_on_click(window: Gtk.Window) -> None:
+    """A click outside the text field being edited ends the editing (GTK keeps the focus when the click lands on
+    something that cannot take it, e.g. the background)."""
+    def pressed(_g, _n, x, y):
+        focus = window.get_focus()
+        row = focus.get_ancestor(Adw.EntryRow) if focus is not None else None
+        if row is None or not row.has_css_class("g13-text-row"):
+            return
+        picked = window.pick(x, y, Gtk.PickFlags.DEFAULT)
+        if picked is None or not (picked == row or picked.is_ancestor(row)):
+            window.set_focus(None)
+    click = Gtk.GestureClick(button=0, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+    click.connect("pressed", pressed)
+    window.add_controller(click)
+
+
+def info_button(text: str) -> Gtk.MenuButton:
+    """A small ⓘ next to a control whose behaviour needs explaining: shows `text` on hover (tooltip) and on click
+    (popover), so nobody has to guess that there is something to read."""
+    btn = Gtk.MenuButton(icon_name="help-about-symbolic", css_classes=["flat", "circular", "g13-info"],
+                         valign=Gtk.Align.CENTER, tooltip_text=text)
+    label = Gtk.Label(label=text, wrap=True, max_width_chars=42, xalign=0, margin_top=6, margin_bottom=6,
+                      margin_start=6, margin_end=6)
+    popover = Gtk.Popover(child=label)
+    btn.set_popover(popover)
+
+    # the same text twice on screen otherwise: no tooltip while the popover is open
+    def tooltip(on: bool) -> None:
+        btn.set_has_tooltip(on)
+        btn.trigger_tooltip_query()
+    popover.connect("show", lambda *_: tooltip(False))
+    popover.connect("closed", lambda *_: tooltip(True))
+    return btn
+
+
 def attach_key_menu(button: Gtk.Widget, on_edit: Callable[[], None], on_unassign: Callable[[], None],
                     has_action: Callable[[], bool]) -> None:
     """Right-click on a key: Edit… / Unassign (the latter only when the key does something)."""

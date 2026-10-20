@@ -11,7 +11,7 @@ from gi.repository import Adw, Gtk  # noqa: E402
 
 from g13d.config.model import Action, Profile  # noqa: E402
 
-from .dnd import make_action_target  # noqa: E402
+from .dnd import make_action_source, make_action_target  # noqa: E402
 from .keymap import action_label  # noqa: E402
 from .widgets import attach_key_menu  # noqa: E402
 
@@ -35,13 +35,17 @@ _LCD_TITLES = {"LCD_MENU": "●", "LCD1": "LCD 1", "LCD2": "LCD 2", "LCD3": "LCD
 
 class KeyButton(Gtk.Button):
     def __init__(self, control: str, title: str, on_click: Callable[[str], None], chars: int = 5,
-                 on_drop: Callable[[str, Action], bool] | None = None,
+                 on_drop: Callable[[str, Action, str | None], bool] | None = None,
                  on_unassign: Callable[[str], None] | None = None):
         super().__init__()
         self.control = control
         self._bound = False
+        self._current = Action.none()
         if on_drop is not None:
-            make_action_target(self, lambda a: on_drop(control, a))
+            make_action_target(self, lambda a, src: on_drop(control, a, src))
+            # drag a key onto another one: moves its assignment there
+            make_action_source(self, lambda: self._current if self._bound else None, lambda: self._action.get_label(),
+                               source=control)
         if on_unassign is not None:
             attach_key_menu(self, lambda: on_click(control), lambda: on_unassign(control), lambda: self._bound)
         self.add_css_class("g13-key")
@@ -62,6 +66,7 @@ class KeyButton(Gtk.Button):
         shown, plain = action_label(action), action.describe()
         self._action.set_tooltip_text(shown + (f" ({plain})" if plain != shown else ""))
         self._bound = action.type != "none"
+        self._current = action
         if action.type == "none":
             self._action.add_css_class("dim-label")
             self.remove_css_class("g13-bound")
@@ -78,7 +83,7 @@ class KeyButton(Gtk.Button):
 
 class KeysPage(Gtk.Box):
     def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None],
-                 on_drop: Callable[[str, Action], bool] | None = None,
+                 on_drop: Callable[[str, Action, str | None], bool] | None = None,
                  label_for: Callable[[Action], str] = action_label,
                  on_unassign: Callable[[str], None] | None = None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12, margin_bottom=12,
@@ -99,7 +104,8 @@ class KeysPage(Gtk.Box):
         self._modes.connect("notify::active-name", lambda g, _p: on_mode(int(g.get_active_name() or 1)))
         top.append(self._modes)
         self.append(top)
-        self._hint = Gtk.Label(label="Click a key to change what it does. Keys light up when pressed on the device.",
+        self._hint = Gtk.Label(label="Click a key to change what it does, drag it onto another to move its assignment. "
+                                     "Keys light up when pressed on the device.",
                                css_classes=["dim-label", "caption"], wrap=True, justify=Gtk.Justification.CENTER)
         self.append(self._hint)
 

@@ -19,7 +19,7 @@ from gi.repository import Adw, Gdk, Graphene, Gsk, Gtk, Pango  # noqa: E402
 from g13d.config.model import STICK_DIRS, Action, Profile  # noqa: E402
 
 from . import device_geometry as geo  # noqa: E402
-from .dnd import make_action_target  # noqa: E402
+from .dnd import make_action_source, make_action_target  # noqa: E402
 from .keymap import action_label  # noqa: E402
 from .widgets import attach_key_menu, led_color  # noqa: E402
 
@@ -49,7 +49,7 @@ def _attrs(px: float, rgb: tuple[int, int, int] | None = None, bold: bool = Fals
 class DeviceKey(Gtk.Button):
     """One control: the assignment pill floating above the cap, the cap legend tinted like the backlight."""
 
-    def __init__(self, control: str, on_click: Callable[[str], None], on_drop: Callable[[str, Action], bool],
+    def __init__(self, control: str, on_click: Callable[[str], None], on_drop: Callable[[str, Action, str | None], bool],
                  on_unassign: Callable[[str], None] | None = None):
         super().__init__(css_classes=["flat", "g13-device-key"], has_frame=False)
         self.control = control
@@ -83,7 +83,10 @@ class DeviceKey(Gtk.Button):
         box.append(self._cap)
         self.set_child(box)
         self.connect("clicked", lambda *_: on_click(control))
-        make_action_target(self, lambda a: on_drop(control, a), lambda: self.enabled)
+        make_action_target(self, lambda a, src: on_drop(control, a, src), lambda: self.enabled)
+        # drag a key onto another one: moves its assignment there
+        make_action_source(self, lambda: self._action if self.enabled and self._action.type != "none" else None,
+                           lambda: self._pill.get_label(), source=control)
         self.set_scale(1.0)
 
     def set_scale(self, scale: float) -> None:
@@ -147,7 +150,7 @@ class ModeKey(Gtk.Button):
             self.connect("clicked", lambda *_: on_click(int(name[1])))
         else:
             self.set_sensitive(False)
-            self.set_tooltip_text("MR: starts and stops a macro recording (Macros tab)")
+            self.set_tooltip_text("MR: starts and stops a macro recording (macro editor)")
 
     def set_scale(self, scale: float) -> None:
         self._scale = scale
@@ -167,8 +170,8 @@ class ModeKey(Gtk.Button):
 class DeviceView(Gtk.Widget):
     """Picture + overlays. Children are positioned by hand from device_geometry."""
 
-    def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None], on_drop: Callable[[str, Action], bool],
-                 on_unassign: Callable[[str], None] | None = None):
+    def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None],
+                 on_drop: Callable[[str, Action, str | None], bool], on_unassign: Callable[[str], None] | None = None):
         super().__init__(hexpand=True, vexpand=True, overflow=Gtk.Overflow.HIDDEN)
         self._texture = Gdk.Texture.new_from_filename(str(files("g13d") / "data" / "g13.png"))
         self._scale = 1.0
@@ -262,7 +265,7 @@ class DevicePage(Gtk.Box):
     """Same interface as KeysPage (set_profile / set_mode / refresh / set_pressed), device layout."""
 
     def __init__(self, on_edit: Callable[[str], None], on_mode: Callable[[int], None],
-                 on_drop: Callable[[str, Action], bool], on_stick_tab: Callable[[], None],
+                 on_drop: Callable[[str, Action, str | None], bool], on_stick_tab: Callable[[], None],
                  label_for: LabelFor = action_label, on_unassign: Callable[[str], None] | None = None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6,
                          margin_start=6, margin_end=6)
@@ -275,7 +278,8 @@ class DevicePage(Gtk.Box):
         self.view = DeviceView(self._clicked, on_mode, self._dropped, on_unassign)
         self._on_drop = on_drop
         self.append(self.view)
-        self._hint = Gtk.Label(label="Click a key or drop an assignment on it. M1–M3 switch the mode shown.",
+        self._hint = Gtk.Label(label="Click a key or drop an assignment on it; drag a key onto another to move its assignment. "
+                                     "M1–M3 switch the mode shown.",
                                css_classes=["dim-label", "caption"], wrap=True, justify=Gtk.Justification.CENTER)
         self.append(self._hint)
 
@@ -286,8 +290,8 @@ class DevicePage(Gtk.Box):
         else:
             self._on_edit(control)
 
-    def _dropped(self, control: str, action: Action) -> bool:
-        return self._on_drop(control, action)
+    def _dropped(self, control: str, action: Action, source: str | None) -> bool:
+        return self._on_drop(control, action, source)
 
     # ---- state ------------------------------------------------------------------------
     def set_profile(self, profile: Profile | None) -> None:

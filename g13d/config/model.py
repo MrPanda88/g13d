@@ -14,6 +14,7 @@ STICK_MODES = ("keys", "mouse", "scroll", "passthrough")
 ACTION_TYPES = ("none", "key", "combo", "macro", "mouse", "mode", "profile", "lcd_page")
 GUI_LAYOUTS = ("gtk", "lgs")
 LIBRARY_SORTS = ("added", "name", "type")
+MACRO_STYLES = ("flow", "icons", "timeline")
 DEFAULT_LCD_PAGES = ("status", "clock", "system", "media")
 _LAYOUT_ALIASES = {"classic": "gtk", "device": "lgs"}
 
@@ -289,6 +290,7 @@ class Settings:
     lcd_pages / lcd_options: the LCD pages shown (same whatever the profile) and their settings ([lcd]).
     gui_layout: how g13-gui arranges its window ([gui] layout): "gtk" (classic widgets) or "lgs" (device picture).
     gui_library_sort: order of the assignments panel ([gui] library_sort): "added", "name" or "type".
+    gui_macro_style: how the macro editor draws the steps ([gui] macro_style): "flow", "icons" or "timeline".
     """
     default_profile: str = ""
     lcd_enabled: bool = True
@@ -299,6 +301,7 @@ class Settings:
     lcd_options: dict[str, str] = field(default_factory=dict)
     gui_layout: str = "gtk"
     gui_library_sort: str = "added"
+    gui_macro_style: str = "flow"
     lcd_configured: bool = field(default=True, compare=False)   # False: the file had no [lcd] table yet
 
     @classmethod
@@ -309,6 +312,7 @@ class Settings:
         layout = str(gui.get("layout", "gtk"))
         layout = _LAYOUT_ALIASES.get(layout, layout)
         sort = str(gui.get("library_sort", "added"))
+        macro_style = str(gui.get("macro_style", "flow"))
         pages = (lcd or {}).get("pages")
         return cls(
             default_profile=str(g.get("default_profile", "")),
@@ -320,6 +324,7 @@ class Settings:
             lcd_options={str(k): str(v) for k, v in ((lcd or {}).get("options", {}) or {}).items()},
             gui_layout=layout if layout in GUI_LAYOUTS else "gtk",
             gui_library_sort=sort if sort in LIBRARY_SORTS else "added",
+            gui_macro_style=macro_style if macro_style in MACRO_STYLES else "flow",
             lcd_configured=isinstance(lcd, dict),
         )
 
@@ -330,4 +335,5 @@ class Settings:
                             "auto_profiles": self.auto_profiles,
                             "profile_order": list(self.profile_order)},
                 "lcd": {"pages": list(self.lcd_pages), **({"options": dict(self.lcd_options)} if self.lcd_options else {})},
-                "gui": {"layout": self.gui_layout, "library_sort": self.gui_library_sort}}
+                "gui": {"layout": self.gui_layout, "library_sort": self.gui_library_sort,
+                        "macro_style": self.gui_macro_style}}

@@ -47,51 +47,75 @@ def make_reorderable(listbox: Gtk.Widget, row: Gtk.Widget, index: int, on_move: 
     row.add_controller(tgt)
 
 
-# ---- dragging actions from the library onto keys -----------------------------------------------
+# ---- dragging actions from the library (or from another key) onto keys ----------------------------
 ACTION_TAG = "g13d-action:"
 
 
-def action_to_payload(action: Action) -> str:
-    return ACTION_TAG + json.dumps(action.to_toml())
+def action_to_payload(action: Action, source: str | None = None) -> str:
+    """`source`: the key the action is dragged from (a move), None for a library entry (a copy)."""
+    data = {"action": action.to_toml()}
+    if source is not None:
+        data["from"] = source
+    return ACTION_TAG + json.dumps(data)
 
 
-def payload_to_action(value) -> Action | None:
-    """The Action carried by a drop, or None when the drop is not ours."""
+def payload_to_action(value) -> tuple[Action, str | None] | None:
+    """(the Action carried by a drop, the key it comes from or None), or None when the drop is not ours."""
     if not isinstance(value, str) or not value.startswith(ACTION_TAG):
         return None
     try:
-        return Action.from_toml(json.loads(value[len(ACTION_TAG):]))
-    except (ValueError, ConfigError):
+        data = json.loads(value[len(ACTION_TAG):])
+        source = data.get("from")
+        return Action.from_toml(data["action"]), source if isinstance(source, str) else None
+    except (ValueError, KeyError, TypeError, AttributeError, ConfigError):
         return None
 
 
-def make_action_source(widget: Gtk.Widget, get_action: Callable[[], Action | None]) -> None:
-    """Let `widget` be dragged as the action get_action() returns (None = nothing to drag)."""
-    src = Gtk.DragSource(actions=Gdk.DragAction.COPY)
+def drag_icon(drag: Gdk.Drag, label: str, icon: str | None = None) -> None:
+    """A pill in the accent colour under the pointer: a snapshot of the dragged widget keeps its colours, which
+    vanish over the black device picture (light text on no background)."""
+    box = Gtk.Box(spacing=6, css_classes=["g13-drag-icon"])
+    if icon:
+        box.append(Gtk.Image.new_from_icon_name(icon))
+    box.append(Gtk.Label(label=label, use_markup=False))
+    Gtk.DragIcon.get_for_drag(drag).set_child(box)
+
+
+def make_action_source(widget: Gtk.Widget, get_action: Callable[[], Action | None], get_label: Callable[[], str],
+                       icon: str | None = None, source: str | None = None) -> None:
+    """Let `widget` be dragged as the action get_action() returns (None = nothing to drag). With `source` (a key
+    name) the drag is a move: the key it comes from is emptied by the drop."""
+    src = Gtk.DragSource(actions=Gdk.DragAction.MOVE if source else Gdk.DragAction.COPY)
 
     def prepare(_s, _x, _y):
         action = get_action()
-        return None if action is None else Gdk.ContentProvider.new_for_value(action_to_payload(action))
+        return None if action is None else Gdk.ContentProvider.new_for_value(action_to_payload(action, source))
+
+    def begin(_s, drag):
+        drag_icon(drag, get_label(), icon)
+        widget.add_css_class("g13-dragging")
     src.connect("prepare", prepare)
-    src.connect("drag-begin", lambda s, _d: s.set_icon(Gtk.WidgetPaintable.new(widget), 0, 0))
+    src.connect("drag-begin", begin)
+    src.connect("drag-end", lambda *_: widget.remove_css_class("g13-dragging"))
     widget.add_controller(src)
 
 
-def make_action_target(widget: Gtk.Widget, on_drop: Callable[[Action], bool],
+def make_action_target(widget: Gtk.Widget, on_drop: Callable[[Action, str | None], bool],
                        accepts: Callable[[], bool] = lambda: True) -> None:
-    """Accept dragged actions on `widget`; on_drop(action) returns whether it was taken."""
-    tgt = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.COPY)
+    """Accept dragged actions on `widget`; on_drop(action, source key or None) returns whether it was taken."""
+    tgt = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
 
-    def enter(_t, _x, _y):
+    def enter(t, _x, _y):
         if not accepts():
             return 0
         widget.add_css_class("g13-drop")
-        return Gdk.DragAction.COPY
+        drop = t.get_current_drop()
+        return Gdk.DragAction.MOVE if drop is not None and drop.get_actions() & Gdk.DragAction.MOVE else Gdk.DragAction.COPY
 
     def drop(_t, value, _x, _y):
         widget.remove_css_class("g13-drop")
-        action = payload_to_action(value)
-        return action is not None and accepts() and on_drop(action)
+        got = payload_to_action(value)
+        return got is not None and accepts() and on_drop(*got)
     tgt.connect("enter", enter)
     tgt.connect("leave", lambda *_: widget.remove_css_class("g13-drop"))
     tgt.connect("drop", drop)
