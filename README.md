@@ -158,31 +158,76 @@ half-way. Keys still held when a macro ends or is stopped are released automatic
 `g13-gui` (also "G13 Configuration" in the app grid) is a GTK4/libadwaita app with two layouts,
 switched live from the menu (☰ → Layout):
 
-- **GTK**: profiles in a sidebar, a schematic keypad in the Keys tab.
-- **LGS** (after Logitech Gaming Software): the photo of the G13 with every key clickable; an *Assignments* panel on the
-  left listing every known assignment and macro (drag one onto a key to bind it, right-click to
-  rename / edit / remove, + to add one); profile tiles along the bottom. Key legends take the backlight
-  colour of the profile and the assignment floats above each key. When the stick is not in *keys*
-  mode its four directions show the mode instead and send you to the Stick tab.
+- **GTK**: basic gtk layout
+  - Profiles in a sidebar
+  - A schematic keypad in the Keys tab
+<img width="1170" height="810" alt="image" src="https://github.com/user-attachments/assets/68832ebb-c68d-4e62-afca-dc0c92ba526d" />
+
+- **LGS** (after Logitech Gaming Software) :
+  - The photo of the G13 with every key clickable
+  - An *Assignments* panel on the left listing every known assignment and macro
+    - drag one onto a key to bind it
+      - dragging keys to keys also works (moves and replaces)
+    - right-click to rename / edit / remove
+    - + to add one
+  - Profile tiles along the bottom
+  - Key legends take the backlight colour of the profile and the assignment floats above each key
+  - When the stick is not in *keys* mode its four directions show the mode instead and send you to the Stick tab.
+<img width="1170" height="810" alt="image" src="https://github.com/user-attachments/assets/9e0d4d41-132f-46b2-91e5-f30839e35da1" />
+
 
 In both:
 
-- **Profiles**: + creates one, based on the default profile when there is one (or any profile you
-  pick, or empty); drag to reorder (the LCD and `g13ctl` follow); click one to activate it on the
-  device; right-click (or the pencil button in the GTK sidebar) for rename / duplicate / icon / default / delete; the star marks the profile
-  loaded at startup. The GUI follows profile and mode switches made on the G13.
-- **Keys**: pick M1/M2/M3, click a key, choose what it does (or right-click it: Edit… / Unassign;
-  the editor has an Unassign button too). Keys are learned by pressing them (Esc included). A key
-  shows the name of its assignment (as listed in the library); its tooltip shows what the key prints
-  with your real layout. Keys light up when pressed on the device.
-- **Stick**: keys / pointer / scroll / passthrough, dead zone, speeds.
-- **LCD & Light**: backlight colour with a hue wheel, R G B sliders and presets (applied live), LCD
-  pages on/off and order (drag or arrows), page settings (clock dial style), preview rendered with
-  the daemon's code and your backlight colour.
-- **Macros**: create, record like Logitech Gaming Software (press Record, type, press Record again
-  or MR on the G13; recording replaces the steps), add key or mouse steps by hand, edit delays,
-  drag to reorder, play on the device.
+- **Profiles**:
+  - \+ creates one, based on the default profile when there is one (or any profile you pick, or empty)
+  - Drag to reorder (the LCD and `g13ctl` follow)
+  - Click one to activate it on the device
+  - Right-click (or the pencil button in the GTK sidebar) for rename / duplicate / icon / default / delete
+  - The star marks the profile loaded at startup
+  - The GUI follows profile and mode switches made on the G13
+- **Keys**:
+  - Pick M1/M2/M3, click a key, choose what it does (or right-click it: Edit… / Unassign
+  - The editor has an Unassign button too). Keys are learned by pressing them (Esc included). A key shows the name of its assignment (as listed in the library)
+  - Its tooltip shows what the key prints with your real layout
+  - Keys light up when pressed on the device
+- **Stick**:
+  - Keys / pointer / scroll / passthrough, dead zone, speeds
+<img width="1110" height="603" alt="image" src="https://github.com/user-attachments/assets/29f9ab78-5762-4fbe-aad2-6791493bd1c1" />
 
+- **LCD & Light**:
+  - Backlight colour with a hue wheel, R G B sliders and presets (applied live)
+  - LCD pages on/off and order (drag or arrows)
+  - Page settings (clock dial style)
+  - Preview rendered with the daemon's code and your backlight colour
+<img width="1110" height="603" alt="image" src="https://github.com/user-attachments/assets/d99a3316-d617-4cb7-b893-d4e832a95c94" />
+<img width="1081" height="474" alt="image" src="https://github.com/user-attachments/assets/3539e78e-af2c-4e78-be50-b0541e738ba1" />
+<img width="1070" height="321" alt="image" src="https://github.com/user-attachments/assets/d452883d-7f4e-4666-bb0c-12495305dd1b" />
+
+- **Macros**:
+  - Tab for GTK layout
+  - Included in "keys" tab on "LGS" layout
+  - Multiple styles
+  - Create
+  - Record like Logitech Gaming Software
+    - press Record, type, press Record again or MR on the G13
+    - Recording replaces the steps (togglable)
+  - Add key or mouse steps by hand
+  - Edit delays
+  - Drag to reorder
+  - Add before/after with right click
+  - Replace key by clicking it
+  - Undo/Redo
+  - Simplify
+    - Remove all waits
+    - Change all waits at once
+    - Slower/faster waits
+    - Convert press+release into tap
+      - Keeps press over 400ms long
+      - Keeps modifier keys (shift, alt, etc.)
+  - Play on the device
+<img width="1110" height="807" alt="image" src="https://github.com/user-attachments/assets/3fc9c1e3-08ac-41c6-b2c6-61b957838d11" />
+  
+  
 Every change is saved immediately and the daemon reloads it. Profiles are plain TOML, so the GUI
 and a text editor can be mixed freely. The assignment library lives in `~/.config/g13d/actions.toml`
 (label → action); it is seeded from the bindings of your profiles and grows with every binding you
