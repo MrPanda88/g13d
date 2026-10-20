@@ -7,15 +7,22 @@ UDEV_RULE := /etc/udev/rules.d/70-g13d.rules
 EXT_UUID := g13d@g13d.org
 EXT_DIR := $(HOME)/.local/share/gnome-shell/extensions/$(EXT_UUID)
 
-.PHONY: help install install-udev install-extension enable uninstall uninstall-udev test lint
+.PHONY: help dev install install-udev install-extension enable uninstall uninstall-udev test lint
 
 help:
+	@echo "make dev            # everything below in one go: udev rule, install, extension, enable"
 	@echo "make install-udev   # (sudo) install udev rule, reload, trigger"
 	@echo "make install        # pip install (editable, user site) + systemd user unit"
 	@echo "make install-extension  # GNOME Shell extension for per-application profiles (then log out / in)"
 	@echo "make enable         # enable + start g13d.service"
 	@echo "make uninstall      # stop service, remove unit, pip uninstall"
 	@echo "make test           # run the test-suite"
+
+# The whole developer install. The Fedora package (COPR) installs the same pieces system-wide: remove it first
+# (sudo dnf remove g13d gnome-shell-extension-g13d), the files in your home would hide it anyway.
+dev:
+	@if rpm -q g13d >/dev/null 2>&1; then echo "The g13d package is installed: sudo dnf remove g13d gnome-shell-extension-g13d first"; exit 1; fi
+	$(MAKE) install-udev install install-extension enable
 
 install-udev:
 	sudo install -Dm644 g13d/data/70-g13d.rules $(UDEV_RULE)

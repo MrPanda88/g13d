@@ -64,11 +64,16 @@ Per-application profiles need the GNOME Shell extension, installed with `g13d` b
 
 ```sh
 git clone https://github.com/MrPanda88/g13d && cd g13d
-make install-udev     # asks for sudo: /etc/udev/rules.d/70-g13d.rules
-make install          # pip install --user -e . ; systemd user unit
-make enable           # start now and at every login
+make dev              # all of the steps below
 g13ctl status
 ```
+
+`make dev` runs, in order: `make install-udev` (asks for sudo: `/etc/udev/rules.d/70-g13d.rules`),
+`make install` (`pip install --user -e .`, systemd user unit, desktop entry), `make install-extension`
+(GNOME Shell extension for per-application profiles; log out and back in once) and `make enable`
+(start now and at every login). The code is installed in editable mode: after a change,
+`systemctl --user restart g13d` is enough. Remove the Fedora package first if you installed it
+(`sudo dnf remove g13d gnome-shell-extension-g13d`); `make dev` refuses to run next to it.
 
 If another G13 driver is running (libusb based), stop it first and replug the device: the kernel
 driver can only bind when nothing else holds the USB interface. `g13ctl diagnose` tells you what
