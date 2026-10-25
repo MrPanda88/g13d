@@ -7,7 +7,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gsk, Gtk  # noqa: E402
 
 
 def focus_entry(entry: Gtk.Widget) -> None:
@@ -127,6 +127,73 @@ class SliderRow(Adw.ActionRow):
     @value.setter
     def value(self, v: float) -> None:
         self._adj.set_value(v)
+
+
+class SideOrStack(Gtk.Widget):
+    """Two children side by side when both fit at their minimum width, the second under the first otherwise.
+
+    Side by side, the extra width goes to the children up to their natural width; each child is centred in its
+    share. Unlike a breakpoint, the decision follows the children's real sizes and the height stays natural.
+    """
+
+    def __init__(self, first: Gtk.Widget, second: Gtk.Widget, spacing: int = 18, **props):
+        super().__init__(**props)
+        self._kids = (first, second)
+        self._spacing = spacing
+        for kid in self._kids:
+            kid.set_parent(self)
+
+    def do_dispose(self) -> None:
+        for kid in self._kids:
+            kid.unparent()
+
+    def do_get_request_mode(self) -> Gtk.SizeRequestMode:
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def _widths(self) -> list[tuple[int, int]]:
+        return [kid.measure(Gtk.Orientation.HORIZONTAL, -1)[:2] for kid in self._kids]
+
+    def _side_by_side(self, width: int) -> bool:
+        return width < 0 or width >= sum(m for m, _n in self._widths()) + self._spacing
+
+    def _split(self, width: int) -> list[int]:
+        """Widths side by side: minimums plus the extra width shared in proportion to what each still wants."""
+        ws = self._widths()
+        extra = width - self._spacing - sum(m for m, _n in ws)
+        want = [n - m for m, n in ws]
+        total = sum(want)
+        if total <= 0:
+            return [m for m, _n in ws]
+        return [m + min(w, int(extra * w / total)) for (m, _n), w in zip(ws, want)]
+
+    def do_measure(self, orientation: Gtk.Orientation, for_size: int):
+        ws = self._widths()
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            return (max(m for m, _n in ws), sum(n for _m, n in ws) + self._spacing, -1, -1)
+        if self._side_by_side(for_size):
+            sizes = self._split(for_size) if for_size >= 0 else [n for _m, n in ws]
+            hs = [kid.measure(orientation, w)[:2] for kid, w in zip(self._kids, sizes)]
+            return (max(m for m, _n in hs), max(n for _m, n in hs), -1, -1)
+        hs = [kid.measure(orientation, min(n, for_size))[:2] for kid, (_m, n) in zip(self._kids, ws)]
+        return (sum(m for m, _n in hs) + self._spacing, sum(n for _m, n in hs) + self._spacing, -1, -1)
+
+    def do_size_allocate(self, width: int, height: int, _baseline: int) -> None:
+        def place(kid: Gtk.Widget, x: float, y: float, w: int, h: int) -> None:
+            kid.allocate(w, h, -1, Gsk.Transform.new().translate(Graphene.Point().init(x, y)))
+        ws = self._widths()
+        if self._side_by_side(width):
+            sizes = self._split(width)
+            x = (width - sum(sizes) - self._spacing) / 2
+            for kid, w in zip(self._kids, sizes):
+                place(kid, x, 0, w, height)
+                x += w + self._spacing
+            return
+        y = 0
+        for kid, (_m, n) in zip(self._kids, ws):
+            w = min(n, width)
+            h = kid.measure(Gtk.Orientation.VERTICAL, w)[1]
+            place(kid, (width - w) / 2, y, w, h)
+            y += h + self._spacing
 
 
 class WidePage(Gtk.ScrolledWindow):

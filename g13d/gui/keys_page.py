@@ -7,13 +7,13 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk  # noqa: E402
+from gi.repository import Adw, Gtk, Pango  # noqa: E402
 
 from g13d.config.model import Action, Profile  # noqa: E402
 
 from .dnd import make_action_source, make_action_target  # noqa: E402
 from .keymap import action_label  # noqa: E402
-from .widgets import attach_key_menu  # noqa: E402
+from .widgets import SideOrStack, attach_key_menu  # noqa: E402
 
 # (control, column, row, colspan) on a 14-column grid (one key = 2 columns, rows offset by 1 column)
 _LAYOUT: list[tuple[str, int, int, int]] = []
@@ -44,7 +44,7 @@ class KeyButton(Gtk.Button):
         if on_drop is not None:
             make_action_target(self, lambda a, src: on_drop(control, a, src))
             # drag a key onto another one: moves its assignment there
-            make_action_source(self, lambda: self._current if self._bound else None, lambda: self._action.get_label(),
+            make_action_source(self, lambda: self._current if self._bound else None, lambda: self._action.get_text(),
                                source=control)
         if on_unassign is not None:
             attach_key_menu(self, lambda: on_click(control), lambda: on_unassign(control), lambda: self._bound)
@@ -52,17 +52,19 @@ class KeyButton(Gtk.Button):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, valign=Gtk.Align.CENTER)
         self._title = Gtk.Label(label=title, css_classes=["caption", "dim-label"], ellipsize=3,
                                 width_chars=chars, max_width_chars=chars)
-        # width_chars == max_width_chars pins the natural width: every key keeps the same size
-        # whatever its label says; long labels wrap on two lines, then get an ellipsis.
-        self._action = Gtk.Label(label="—", ellipsize=3, wrap=True, lines=2, width_chars=chars, max_width_chars=chars,
-                                 justify=Gtk.Justification.CENTER, css_classes=["heading"])
+        # an Inscription's size never depends on its text (a wrapped Label's minimum is its longest word, which
+        # widened the whole homogeneous grid past the window): every key keeps the same size, long labels wrap on
+        # two lines, then get an ellipsis
+        self._action = Gtk.Inscription(text="—", min_chars=chars, nat_chars=chars * 2, min_lines=2, nat_lines=2,
+                                       xalign=0.5, text_overflow=Gtk.InscriptionOverflow.ELLIPSIZE_END,
+                                       wrap_mode=Pango.WrapMode.WORD_CHAR, css_classes=["heading"])
         box.append(self._title)
         box.append(self._action)
         self.set_child(box)
         self.connect("clicked", lambda *_: on_click(control))
 
     def set_action(self, action: Action, label: str | None = None) -> None:
-        self._action.set_label(label if label is not None else action_label(action))
+        self._action.set_text(label if label is not None else action_label(action))
         shown, plain = action_label(action), action.describe()
         self._action.set_tooltip_text(shown + (f" ({plain})" if plain != shown else ""))
         self._bound = action.type != "none"
@@ -130,21 +132,19 @@ class KeysPage(Gtk.Box):
         body.append(lcd)
 
         # Keypad + stick
-        main = Gtk.Box(spacing=18, halign=Gtk.Align.CENTER)
         grid = Gtk.Grid(column_spacing=4, row_spacing=4, column_homogeneous=True, hexpand=True)
         for control, col, row, span in _LAYOUT:
             grid.attach(self._make(control, control), col, row, span, 1)
-        main.append(grid)
         stick = Gtk.Grid(column_spacing=4, row_spacing=4, valign=Gtk.Align.END)
         for control, col, row in _STICK:
             b = self._make(control, _STICK_TITLES[control], chars=5)
             b.add_css_class("g13-small")
             stick.attach(b, col, row, 1, 1)
-        stick_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        stick_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, halign=Gtk.Align.CENTER)
         stick_box.append(Gtk.Label(label="Thumbstick", css_classes=["caption", "dim-label"]))
         stick_box.append(stick)
-        main.append(stick_box)
-        body.append(main)
+        # the stick goes under the keypad when the page is too narrow for both side by side
+        body.append(SideOrStack(grid, stick_box, spacing=18))
         self.append(Adw.Clamp(maximum_size=1100, tightening_threshold=900, child=frame))
 
     def _make(self, control: str, title: str, chars: int = 5) -> KeyButton:

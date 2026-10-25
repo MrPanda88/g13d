@@ -168,7 +168,7 @@ class ProfilesSidebar(Gtk.Box):
         while (row := self._list.get_row_at_index(0)) is not None:
             self._list.remove(row)
         for i, name in enumerate(profiles):
-            row = Adw.ActionRow(title=name, activatable=True, use_markup=False)
+            row = Adw.ActionRow(title=name, activatable=True, use_markup=False, title_lines=2)
             make_reorderable(self._list, row, i, self._moved)
             row.profile_name = name  # type: ignore[attr-defined]
             row.add_prefix(profile_icon(profiles[name], 28))

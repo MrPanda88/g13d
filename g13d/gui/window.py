@@ -221,7 +221,7 @@ class MainWindow(Adw.ApplicationWindow):
             self._macro_editor = self._macros_page.editor
             keys_widget = Gtk.ScrolledWindow(child=self._keys, hscrollbar_policy=Gtk.PolicyType.AUTOMATIC)
             self._profiles_ui = ProfilesSidebar(self._profile_picked, self._profile_command)
-            nav = Adw.NavigationSplitView(min_sidebar_width=200, max_sidebar_width=260)
+            nav = Adw.NavigationSplitView(min_sidebar_width=240, max_sidebar_width=280)
             nav.set_sidebar(Adw.NavigationPage(child=self._profiles_ui, title="Profiles"))
             nav.set_content(Adw.NavigationPage(child=content, title="G13"))
             root = nav

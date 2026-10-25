@@ -110,38 +110,41 @@ class MacroEditor(WidePage):
         self._timeline = macro_steps.Timeline()
         sg.add(self._timeline)
 
-        tools = Gtk.Box(spacing=6, margin_bottom=6)
+        # groups of buttons that wrap as units when the window is narrow (a single row forced the window's width)
+        tools = Adw.WrapBox(child_spacing=18, line_spacing=6, margin_bottom=6)
+        record = Gtk.Box(spacing=6)
+        steps = Gtk.Box(spacing=6)
+        history = Gtk.Box(spacing=0)
         self._record = Gtk.ToggleButton()
         self._record.set_child(self._btn_content("media-record-symbolic", "Record"))
         self._record.add_css_class("destructive-action")
         self._record.connect("toggled", self._toggle_record)
-        tools.append(self._record)
+        record.append(self._record)
         self._delays = Gtk.CheckButton(label="With delays", active=True, valign=Gtk.Align.CENTER)
-        tools.append(self._delays)
+        record.append(self._delays)
         self._replace = Gtk.CheckButton(label="Replace steps", active=True, valign=Gtk.Align.CENTER)
         self._replace.connect("toggled", lambda *_: self._update_record_tooltip())
-        tools.append(self._replace)
-        tools.append(info_button("On: a recording replaces all the steps.\nOff: it is added to them, at the end, or "
+        record.append(self._replace)
+        record.append(info_button("On: a recording replaces all the steps.\nOff: it is added to them, at the end, or "
                                  "at the mark when you chose Insert before / after (right-click a step)."))
-        tools.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL, margin_start=4, margin_end=4))
         self._add_menu = self._add_step_button()
-        tools.append(self._add_menu)
-        tools.append(macro_steps.simplify_menu(lambda: self._current.steps if self._current else None,
+        steps.append(self._add_menu)
+        steps.append(macro_steps.simplify_menu(lambda: self._current.steps if self._current else None,
                                             lambda steps: self._change(steps)))
         clear = Gtk.Button(label="Clear", tooltip_text="Remove all steps")
         clear.connect("clicked", lambda *_: self._clear())
-        tools.append(clear)
-        tools.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL, margin_start=4, margin_end=4))
+        steps.append(clear)
         self._undo = Gtk.Button(icon_name="edit-undo-symbolic", tooltip_text="Undo (Ctrl+Z)", css_classes=["flat"])
         self._undo.connect("clicked", lambda *_: self._undo_redo(redo=False))
-        tools.append(self._undo)
+        history.append(self._undo)
         self._redo = Gtk.Button(icon_name="edit-redo-symbolic", tooltip_text="Redo (Ctrl+Shift+Z)", css_classes=["flat"])
         self._redo.connect("clicked", lambda *_: self._undo_redo(redo=True))
-        tools.append(self._redo)
-        play = Gtk.Button(tooltip_text="Play on the device now", hexpand=True, halign=Gtk.Align.END)
+        history.append(self._redo)
+        play = Gtk.Button(tooltip_text="Play on the device now")
         play.set_child(self._btn_content("media-playback-start-symbolic", "Play"))
         play.connect("clicked", lambda *_: self._play())
-        tools.append(play)
+        for group in (record, steps, history, play):
+            tools.append(group)
         sg.add(tools)
 
         # what a click does, right above the list it is about
@@ -676,10 +679,10 @@ class MacrosPage(Gtk.Box):
         name = c.name
 
         def delete() -> None:
+            is_global = self._store.is_global_macro(name)
             self._store.delete_macro(name)
             self.editor.edit(None)
             self.reload()
-            is_global = self._store.is_global_macro(name)
             self._retarget("macro", name, None, is_global)
             self._on_macros_changed()
         confirm_delete_macro(self, name, delete)
