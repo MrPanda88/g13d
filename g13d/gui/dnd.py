@@ -1,4 +1,5 @@
-"""Drag-and-drop reordering for Gtk.ListBox rows."""
+"""Drag-and-drop: reordering rows and tiles (with auto-scroll at the edges of their scrolled window), dragging
+assignments onto keys."""
 from __future__ import annotations
 
 import json
@@ -7,7 +8,7 @@ from collections.abc import Callable
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, GObject, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, GObject, Gtk  # noqa: E402
 
 from g13d.config.model import Action, ConfigError  # noqa: E402
 
@@ -29,22 +30,88 @@ def make_reorderable(listbox: Gtk.Widget, row: Gtk.Widget, index: int, on_move: 
 
     tgt = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
 
-    def drop(_t, value, _x, y):
-        row.remove_css_class("g13-drop")
+    def is_before(x, y) -> bool:
+        return (x < row.get_width() / 2) if horizontal else (y < row.get_height() / 2)
+
+    mark_before, mark_after = ("g13-drop-left", "g13-drop-right") if horizontal else ("g13-drop-before", "g13-drop-after")
+
+    def clear():
+        row.remove_css_class(mark_before)
+        row.remove_css_class(mark_after)
+
+    def motion(_t, x, y):
+        """The insertion mark on the side the row will go."""
+        before = is_before(x, y)
+        row.add_css_class(mark_before if before else mark_after)
+        row.remove_css_class(mark_after if before else mark_before)
+        return Gdk.DragAction.MOVE
+
+    def drop(_t, value, x, y):
+        clear()
         if not isinstance(value, str) or not value.startswith(tag):
             return False
         src_index = int(value[len(tag):])
-        before = (_x < row.get_width() / 2) if horizontal else (y < row.get_height() / 2)
-        dest = index if before else index + 1
+        dest = index if is_before(x, y) else index + 1
         if src_index < dest:
             dest -= 1
         if src_index != dest:
             on_move(src_index, dest)
         return True
     tgt.connect("drop", drop)
-    tgt.connect("enter", lambda *_: (row.add_css_class("g13-drop"), Gdk.DragAction.MOVE)[1])
-    tgt.connect("leave", lambda *_: row.remove_css_class("g13-drop"))
+    tgt.connect("enter", motion)
+    tgt.connect("motion", motion)
+    tgt.connect("leave", lambda *_: clear())
     row.add_controller(tgt)
+
+
+def autoscroll_on_drag(scroller: Gtk.ScrolledWindow, horizontal: bool = False, edge: int = 56) -> None:
+    """While something is dragged over `scroller`, scroll it when the pointer nears one of its ends (faster
+    closer to the edge), so a row can be dropped anywhere in a long list."""
+    state = {"speed": 0.0, "timer": 0}
+
+    def tick() -> bool:
+        adj = scroller.get_hadjustment() if horizontal else scroller.get_vadjustment()
+        if state["speed"] == 0:
+            state["timer"] = 0
+            return False
+        adj.set_value(min(max(adj.get_value() + state["speed"], adj.get_lower()), adj.get_upper() - adj.get_page_size()))
+        return True
+
+    def motion(_c, x, y):
+        pos, size = (x, scroller.get_width()) if horizontal else (y, scroller.get_height())
+        if pos < edge:
+            state["speed"] = -18 * (1 - pos / edge) - 2
+        elif pos > size - edge:
+            state["speed"] = 18 * (1 - (size - pos) / edge) + 2
+        else:
+            state["speed"] = 0
+        if state["speed"] and not state["timer"]:
+            state["timer"] = GLib.timeout_add(16, tick)
+
+    def stop(*_):
+        state["speed"] = 0
+
+    ctl = Gtk.DropControllerMotion()
+    ctl.connect("enter", motion)
+    ctl.connect("motion", motion)
+    ctl.connect("leave", stop)
+    scroller.add_controller(ctl)
+
+
+def wheel_scrolls_horizontally(scroller: Gtk.ScrolledWindow) -> None:
+    """A horizontal strip: the mouse wheel (vertical) moves it sideways. Touchpads keep their own sideways swipe."""
+    ctl = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.VERTICAL)
+    ctl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+    def scroll(c, _dx, dy) -> bool:
+        if dy == 0:
+            return False
+        adj = scroller.get_hadjustment()
+        step = dy if c.get_unit() == Gdk.ScrollUnit.SURFACE else dy * max(adj.get_page_size() / 4, 60)
+        adj.set_value(min(max(adj.get_value() + step, adj.get_lower()), adj.get_upper() - adj.get_page_size()))
+        return True
+    ctl.connect("scroll", scroll)
+    scroller.add_controller(ctl)
 
 
 # ---- dragging actions from the library (or from another key) onto keys ----------------------------

@@ -89,7 +89,7 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   (the active LCD area is exactly 160×43; the backlit window is physically larger than the pixel matrix)
 - LCD pages without hardware: `scripts/render_pages.py DIR`, then look at the PNGs
 - GUI screenshots without watching: `g13-gui --tab keys|stick|lcd|macros [--mode 2] [--edit G1] [--layout lgs|gtk]
-  [--size 900x600] --screenshot out.png` (the window shows for 2 s). Layout-aware labels only appear once the window
+  [--size 900x600] [--profiles-grid] --screenshot out.png` (the window shows for 2 s). Layout-aware labels only appear once the window
   has had focus (Wayland keymap)
 
 ## Working rules

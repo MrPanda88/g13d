@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--layout", choices=("lgs", "gtk"), help="window layout for this run (the menu sets the default)")
     ap.add_argument("--size", metavar="WxH", help="initial window size, e.g. 900x600 (debug)")
     ap.add_argument("--link-app", metavar="PROFILE", help="open the application dialog of a profile at startup (debug)")
+    ap.add_argument("--profiles-grid", action="store_true", help="open the grid of profiles at startup (lgs layout, debug)")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--version", action="version", version=f"g13-gui {__version__}")
     args = ap.parse_args(argv)
@@ -66,6 +67,8 @@ def main(argv: list[str] | None = None) -> None:
             GLib.timeout_add(300, lambda: (win.edit_control(args.edit), False)[1])
         if args.link_app:
             GLib.timeout_add(600, lambda: (win.link_app_dialog(args.link_app), False)[1])
+        if args.profiles_grid:
+            GLib.timeout_add(300, lambda: (win.open_profiles_grid(), False)[1])
         if args.screenshot:
             GLib.timeout_add(2000, _screenshot, win, args.screenshot, application)
 

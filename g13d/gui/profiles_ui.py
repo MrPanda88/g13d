@@ -1,4 +1,5 @@
-"""The two ways profiles are listed: a sidebar (classic layout) or a strip of tiles (device layout).
+"""The ways profiles are listed: a sidebar (classic layout) or a strip of tiles (device layout), which also opens
+them all in a grid (ProfilesGrid).
 
 Both expose the same interface so the window does not care which one is shown:
   rebuild(profiles, default, active, selected) · select(name) · set_active(name) · status (a Gtk.Label)
@@ -20,7 +21,7 @@ from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Graphene, Gtk, Pango  
 
 from g13d.config.model import Profile  # noqa: E402
 
-from .dnd import make_reorderable  # noqa: E402
+from .dnd import autoscroll_on_drag, make_reorderable, wheel_scrolls_horizontally  # noqa: E402
 
 OnSelect = Callable[[str], None]
 OnCommand = Callable[[str, str], None]
@@ -138,7 +139,9 @@ class ProfilesSidebar(Gtk.Box):
         click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
         click.connect("pressed", self._on_right_click)
         self._list.add_controller(click)
-        view.set_content(Gtk.ScrolledWindow(child=self._list, hscrollbar_policy=Gtk.PolicyType.NEVER))
+        scroller = Gtk.ScrolledWindow(child=self._list, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        autoscroll_on_drag(scroller)
+        view.set_content(scroller)
         bar = Gtk.Box(spacing=4, margin_start=6, margin_end=6, margin_top=4, margin_bottom=4)
         for icon, tip, cmd in _COMMANDS:
             b = Gtk.Button(icon_name=icon, tooltip_text=tip, css_classes=["flat"])
@@ -211,11 +214,11 @@ class ProfilesSidebar(Gtk.Box):
 
 
 class _Tile(Gtk.Button):
-    def __init__(self, profile: Profile, is_default: bool, active: bool, locked: bool = False):
+    def __init__(self, profile: Profile, is_default: bool, active: bool, locked: bool = False, size: int = 44):
         super().__init__(css_classes=["flat", "g13-tile"])
         self.profile_name = profile.name
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        over = Gtk.Overlay(child=profile_icon(profile, 44))
+        over = Gtk.Overlay(child=profile_icon(profile, size))
         badges = Gtk.Box(spacing=2, halign=Gtk.Align.END, valign=Gtk.Align.START)
         if is_default:
             star = Gtk.Image.new_from_icon_name("starred-symbolic")
@@ -239,60 +242,175 @@ class _Tile(Gtk.Button):
         over.add_overlay(badges)
         box.append(over)
         box.append(Gtk.Label(label=profile.name, css_classes=["caption"], ellipsize=Pango.EllipsizeMode.END,
-                             max_width_chars=12, use_markup=False))
+                             max_width_chars=12 if size < 60 else 16, use_markup=False))
         self.set_child(box)
         self.set_tooltip_text(profile.name + (" · default" if is_default else "") + (" · active on the device" if active else ""))
 
 
+class _TileSet:
+    """Profile tiles in a container (the strip or the grid): click selects, right-click opens the profile menu,
+    drag-and-drop reorders."""
+
+    def __init__(self, container: Gtk.Widget, menu: _ContextMenu, on_select: OnSelect, on_command: OnCommand,
+                 size: int, wrap_child: Callable[[Gtk.Widget], Gtk.Widget] = lambda w: w):
+        self._container, self._menu = container, menu
+        self._on_select, self._on_command = on_select, on_command
+        self._size = size
+        self._wrap = wrap_child
+        self.tiles: dict[str, _Tile] = {}
+        self.default = ""
+
+    def rebuild(self, profiles: dict[str, Profile], default: str, active: str, selected: str) -> None:
+        self.default = default
+        while (w := self._container.get_first_child()) is not None:
+            self._container.remove(w)
+        self.tiles.clear()
+        for i, name in enumerate(profiles):
+            tile = _Tile(profiles[name], name == default, name == active, name == self._menu.locked, self._size)
+            if self._size >= 60:
+                tile.add_css_class("g13-grid-tile")
+            make_reorderable(self._container, tile, i, lambda s_, d: self._on_command(f"move:{s_}:{d}", ""), horizontal=True)
+            tile.connect("clicked", lambda _b, n=name: self._on_select(n))
+            click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+            click.connect("pressed", lambda g, _n, x, y, n=name: self._menu.open(n, n == self.default, x, y, g.get_widget()))
+            tile.add_controller(click)
+            self._container.append(self._wrap(tile))
+            self.tiles[name] = tile
+        self.select(selected)
+
+    def select(self, name: str) -> None:
+        for n, tile in self.tiles.items():
+            if n == name:
+                tile.add_css_class("g13-tile-selected")
+            else:
+                tile.remove_css_class("g13-tile-selected")
+
+    def set_active(self, active: str, locked: str) -> None:
+        for n, tile in self.tiles.items():
+            tile.dot.set_visible(n == active)
+            tile.lock.set_visible(n == locked)
+
+
+class ProfilesGrid(Adw.Dialog):
+    """Every profile at once, as a grid of tiles with the strip's commands: easier to survey and reorder a long list."""
+
+    def __init__(self, on_select: OnSelect, on_command: OnCommand, menu_locked: Callable[[], str]):
+        super().__init__(title="Profiles", content_width=860, content_height=560)
+        view = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        new = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="New profile")
+        new.connect("clicked", lambda *_: on_command("new", ""))
+        header.pack_start(new)
+        view.add_top_bar(header)
+        host = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)     # parent of the menu: never cleared
+        self._flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, max_children_per_line=24,
+                                 min_children_per_line=2, row_spacing=6, column_spacing=6, valign=Gtk.Align.START,
+                                 margin_start=12, margin_end=12, margin_top=12, margin_bottom=12)
+        scroller = Gtk.ScrolledWindow(child=self._flow, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        autoscroll_on_drag(scroller)
+        host.append(scroller)
+        host.append(Gtk.Label(label="Click a profile to select it, right-click for its commands, drag it to reorder.",
+                              css_classes=["dim-label", "caption"], wrap=True, margin_bottom=8, margin_start=12, margin_end=12))
+        view.set_content(host)
+        self.set_child(view)
+        self._menu = _ContextMenu(host, on_select, on_command)
+        self._menu.horizontal = True
+        self._menu_locked = menu_locked
+        self._tiles = _TileSet(self._flow, self._menu, on_select, on_command, 64,
+                               lambda tile: Gtk.FlowBoxChild(child=tile, focusable=False))
+
+    def rebuild(self, profiles: dict[str, Profile], default: str, active: str, selected: str) -> None:
+        self._menu.locked = self._menu_locked()
+        self._tiles.rebuild(profiles, default, active, selected)
+
+    def select(self, name: str) -> None:
+        self._tiles.select(name)
+
+    def set_active(self, active: str, locked: str = "") -> None:
+        self._menu.locked = locked
+        self._tiles.set_active(active, locked)
+
+
 class ProfilesBar(Gtk.Box):
-    """Horizontal strip of profile tiles with a right-click menu, plus a + tile and the status label."""
+    """Horizontal strip of profile tiles with a right-click menu, the + (new profile) and grid buttons outside the
+    scrolled part, and the status label."""
 
     def __init__(self, on_select: OnSelect, on_command: OnCommand):
         super().__init__(spacing=6, margin_start=6, margin_end=6, margin_top=4, margin_bottom=4)
         self._on_select, self._on_command = on_select, on_command
-        self._tiles: dict[str, _Tile] = {}
-        self._default = ""
+        self._data: tuple[dict[str, Profile], str, str, str] = ({}, "", "", "")
+        self._grid: ProfilesGrid | None = None
+        # a scrollbar of its own under the tiles (the overlay one hid their names), the wheel scrolls sideways
         self._strip = Gtk.Box(spacing=4)
-        scroller = Gtk.ScrolledWindow(child=self._strip, hexpand=True, vscrollbar_policy=Gtk.PolicyType.NEVER,
-                                      hscrollbar_policy=Gtk.PolicyType.AUTOMATIC, propagate_natural_height=True)
-        self.append(scroller)
+        self._scroller = Gtk.ScrolledWindow(child=self._strip, vscrollbar_policy=Gtk.PolicyType.NEVER,
+                                            hscrollbar_policy=Gtk.PolicyType.EXTERNAL, propagate_natural_height=True)
+        wheel_scrolls_horizontally(self._scroller)
+        autoscroll_on_drag(self._scroller, horizontal=True)
+        bar = Gtk.Scrollbar(orientation=Gtk.Orientation.HORIZONTAL, adjustment=self._scroller.get_hadjustment(),
+                            css_classes=["g13-tiles-scrollbar"])
+        adj = self._scroller.get_hadjustment()
+        adj.connect("changed", lambda a: bar.set_visible(a.get_upper() - a.get_lower() > a.get_page_size() + 1))
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+        column.append(self._scroller)
+        column.append(bar)
+        self.append(column)
+        buttons = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, valign=Gtk.Align.CENTER)
+        plus = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat"], tooltip_text="New profile")
+        plus.connect("clicked", lambda *_: self._on_command("new", ""))
+        buttons.append(plus)
+        grid = Gtk.Button(icon_name="view-grid-symbolic", css_classes=["flat"], tooltip_text="All profiles")
+        grid.connect("clicked", lambda *_: self.open_grid())
+        buttons.append(grid)
+        self.append(buttons)
+        self.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
         self.status = Gtk.Label(css_classes=["caption", "dim-label"], wrap=True, justify=Gtk.Justification.RIGHT,
                                 max_width_chars=48, width_chars=22, xalign=1, valign=Gtk.Align.CENTER)
         self.append(self.status)
 
         # parented to the bar, not the strip: the strip's children are replaced on every rebuild
         self._menu = _ContextMenu(self, on_select, on_command)
+        self._menu.horizontal = True
+        self._tiles = _TileSet(self._strip, self._menu, on_select, on_command, 44)
+
+    def open_grid(self) -> None:
+        if self._grid is None:
+            self._grid = ProfilesGrid(self._on_select, self._on_command, lambda: self._menu.locked)
+            self._grid.connect("closed", lambda *_: setattr(self, "_grid", None))
+            self._grid.rebuild(*self._data)
+            self._grid.present(self.get_root())
 
     def rebuild(self, profiles: dict[str, Profile], default: str, active: str, selected: str) -> None:
-        self._default = default
-        while (w := self._strip.get_first_child()) is not None:
-            self._strip.remove(w)
-        self._tiles.clear()
-        self._menu.horizontal = True
-        for i, name in enumerate(profiles):
-            tile = _Tile(profiles[name], name == default, name == active, name == self._menu.locked)
-            make_reorderable(self._strip, tile, i, lambda s_, d: self._on_command(f"move:{s_}:{d}", ""), horizontal=True)
-            tile.connect("clicked", lambda _b, n=name: self._on_select(n))
-            click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
-            click.connect("pressed", lambda g, _n, x, y, n=name: self._menu.open(n, n == self._default, x, y, g.get_widget()))
-            tile.add_controller(click)
-            self._strip.append(tile)
-            self._tiles[name] = tile
-        plus = Gtk.Button(icon_name="list-add-symbolic", css_classes=["flat", "g13-tile", "g13-tile-add"], tooltip_text="New profile",
-                          valign=Gtk.Align.CENTER)
-        plus.connect("clicked", lambda *_: self._on_command("new", ""))
-        self._strip.append(plus)
-        self.select(selected)
+        self._data = (profiles, default, active, selected)
+        self._tiles.rebuild(profiles, default, active, selected)
+        if self._grid is not None:
+            self._grid.rebuild(profiles, default, active, selected)
 
     def select(self, name: str) -> None:
-        for n, tile in self._tiles.items():
-            if n == name:
-                tile.add_css_class("g13-tile-selected")
-            else:
-                tile.remove_css_class("g13-tile-selected")
+        profiles, default, active, _ = self._data
+        self._data = (profiles, default, active, name)
+        self._tiles.select(name)
+        if self._grid is not None:
+            self._grid.select(name)
+        tile = self._tiles.tiles.get(name)
+        if tile is not None:
+            GLib.idle_add(lambda: (self._scroll_to(tile), False)[1])
+
+    def _scroll_to(self, tile: Gtk.Widget) -> None:
+        """Keep the selected tile in view (picked from the grid or the device while scrolled away)."""
+        ok, rect = tile.compute_bounds(self._strip)
+        if not ok:
+            return
+        adj = self._scroller.get_hadjustment()
+        x, w = rect.get_x(), rect.get_width()
+        if x < adj.get_value():
+            adj.set_value(x)
+        elif x + w > adj.get_value() + adj.get_page_size():
+            adj.set_value(x + w - adj.get_page_size())
 
     def set_active(self, active: str, locked: str = "") -> None:
         self._menu.locked = locked
-        for n, tile in self._tiles.items():
-            tile.dot.set_visible(n == active)
-            tile.lock.set_visible(n == locked)
+        profiles, default, _, selected = self._data
+        self._data = (profiles, default, active, selected)
+        self._tiles.set_active(active, locked)
+        if self._grid is not None:
+            self._grid.set_active(active, locked)

@@ -55,6 +55,10 @@ CSS = """
 .g13-drag-icon { background: @accent_bg_color; color: @accent_fg_color; border-radius: 6px; padding: 4px 10px;
                  margin: 6px; box-shadow: 0 1px 4px alpha(black, 0.5); font-weight: bold; }
 .g13-drop { box-shadow: inset 0 2px 0 0 @accent_bg_color; }
+.g13-drop-before { box-shadow: inset 0 3px 0 0 @accent_bg_color; }
+.g13-drop-after { box-shadow: inset 0 -3px 0 0 @accent_bg_color; }
+.g13-drop-left { box-shadow: inset 3px 0 0 0 @accent_bg_color; }
+.g13-drop-right { box-shadow: inset -3px 0 0 0 @accent_bg_color; }
 
 /* device layout: overlays on the photo */
 .g13-device-key { padding: 0; min-width: 0; min-height: 0; background: none; border: none; box-shadow: none; }
@@ -78,6 +82,10 @@ CSS = """
 .g13-tile { padding: 4px 6px; min-width: 72px; border-radius: 8px; }
 .g13-tile-selected { background: alpha(@accent_bg_color, 0.25); box-shadow: inset 0 0 0 1px @accent_bg_color; }
 .g13-tile-add { min-height: 60px; }
+.g13-tiles-scrollbar { background: none; }
+.g13-tiles-scrollbar slider { min-height: 6px; margin: 1px 0; border: none; background: alpha(@view_fg_color, 0.35); }
+.g13-tiles-scrollbar slider:hover { background: alpha(@view_fg_color, 0.55); }
+.g13-grid-tile { min-width: 104px; }
 .g13-tile-picture { border-radius: 6px; }
 .g13-badge { background: alpha(@view_bg_color, 0.9); border-radius: 10px; padding: 2px; margin: 2px;
              box-shadow: 0 0 2px alpha(black, 0.4); }
@@ -873,6 +881,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._mode = mode
         self._keys.set_mode(mode)
         self._lcd.set_mode(mode)
+
+    def open_profiles_grid(self) -> None:
+        if isinstance(self._profiles_ui, ProfilesBar):
+            self._profiles_ui.open_grid()
 
     def show_tab(self, name: str) -> None:
         if name == "macros" and self._macros_page is None:      # lgs: no tab, the first macro in place of the G13

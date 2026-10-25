@@ -202,7 +202,9 @@ In both:
 
 - **Profiles**:
   - \+ creates one, based on the default profile when there is one (or any profile you pick, or empty)
-  - Drag to reorder (the LCD and `g13ctl` follow)
+  - Duplicate copies everything: bindings, assignment names and macros
+  - Drag to reorder (the LCD and `g13ctl` follow); the LGS strip scrolls with the wheel and while dragging near its ends,
+    and its grid button shows every profile at once, with the same commands
   - Click one to activate it on the device
   - Right-click (or the pencil button in the GTK sidebar) for rename / duplicate / icon / default / delete
   - The star marks the profile loaded at startup
