@@ -51,3 +51,21 @@ STICK_DIRS: dict[str, Rect] = {"STICK_UP": _r(917, 585, 90, 30), "STICK_DOWN": _
                                "STICK_LEFT": _r(850, 715, 80, 30), "STICK_RIGHT": _r(986, 715, 74, 30)}
 
 ALL: dict[str, Rect] = {**KEYS, **LCD_KEYS, **STICK_BUTTONS, **STICK_DIRS}
+
+
+def fit_widths(items: list[tuple[float, float, float, float, float]], gap: float = 0.0) -> list[float]:
+    """Widths for labels centred on their slot, so labels sharing a band never overlap.
+
+    items: (centre x, top, bottom, minimum width, wanted width). A label grows into the room its neighbours
+    leave free (a short neighbour gives up its share) and never shrinks below its minimum (the slot itself).
+    """
+    out = []
+    for i, (cx, top, bottom, low, want) in enumerate(items):
+        half = want / 2
+        for j, (cx2, top2, bottom2, _low2, want2) in enumerate(items):
+            d = abs(cx2 - cx)
+            if j == i or d == 0 or min(bottom, bottom2) <= max(top, top2):
+                continue
+            half = min(half, max(d / 2, d - want2 / 2) - gap / 2)
+        out.append(max(low, min(want, 2 * half)))
+    return out

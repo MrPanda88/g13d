@@ -62,6 +62,9 @@ class DeviceKey(Gtk.Button):
         self.pill_above = control not in geo.PILL_ON_CONTROL and control != "STICK_PRESS"
         self.detached_pill: Gtk.Label | None = None
         self._action = Action.none()
+        self._label: str | None = None
+        self.hovered = False
+        self.on_hover: Callable[[DeviceKey], None] | None = None     # DeviceView: show the full label on top
         self._rgb = (51, 153, 255)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0, valign=Gtk.Align.FILL)
         self._pill = Gtk.Label(css_classes=["g13-pill"], ellipsize=Pango.EllipsizeMode.END, halign=Gtk.Align.CENTER,
@@ -87,7 +90,18 @@ class DeviceKey(Gtk.Button):
         # drag a key onto another one: moves its assignment there
         make_action_source(self, lambda: self._action if self.enabled and self._action.type != "none" else None,
                            lambda: self._pill.get_label(), source=control)
+        motion = Gtk.EventControllerMotion()
+        motion.connect("enter", lambda *_: self._hover(True))
+        motion.connect("leave", lambda *_: self._hover(False))
+        self.add_controller(motion)
         self.set_scale(1.0)
+
+    def _hover(self, hovered: bool) -> None:
+        self.hovered = hovered
+        # hovered: the label is no longer capped, DeviceView gives it its natural width over its neighbours
+        self._pill.set_max_width_chars(-1 if hovered else 14)
+        if self.on_hover is not None:
+            self.on_hover(self)
 
     def set_scale(self, scale: float) -> None:
         self._scale = scale
@@ -100,6 +114,7 @@ class DeviceKey(Gtk.Button):
 
     def set_action(self, action: Action, label: str | None = None) -> None:
         self._action = action
+        self._label = label
         # the pill keeps its place when empty (opacity, not visibility), so the legend never jumps
         self._pill.set_visible(True)
         self._pill.set_opacity(1.0 if action.type != "none" else 0.0)
@@ -122,7 +137,7 @@ class DeviceKey(Gtk.Button):
         self.enabled = text is None
         if text is None:
             self.remove_css_class("g13-inactive")
-            self.set_action(self._action)
+            self.set_action(self._action, self._label)
         else:
             self.add_css_class("g13-inactive")
             self._pill.set_visible(True)
@@ -179,6 +194,7 @@ class DeviceView(Gtk.Widget):
         self.modes: dict[str, ModeKey] = {}
         for control in geo.ALL:
             k = DeviceKey(control, on_edit, on_drop, on_unassign)
+            k.on_hover = lambda _k: self.queue_allocate()
             k.set_parent(self)
             self.keys[control] = k
         self._press_pill = self.keys["STICK_PRESS"].detached_pill
@@ -212,22 +228,28 @@ class DeviceView(Gtk.Widget):
             self._scale = scale
             for child in list(self.keys.values()) + list(self.modes.values()):
                 child.set_scale(scale)
-        for child in list(self.keys.values()) + list(self.modes.values()):
+        children = list(self.keys.values()) + list(self.modes.values())
+        slots = []
+        for child in children:
             x, y, w, h = child.rect
             px, py = ox + x * geo.IMAGE_W * scale, oy + y * geo.IMAGE_H * scale
             pw, ph = w * geo.IMAGE_W * scale, h * geo.IMAGE_H * scale
             if isinstance(child, DeviceKey) and child.pill_above:
                 pill = PILL_H * scale          # the pill hangs above the cap
                 py, ph = py - pill, ph + pill
-            # never underallocate, and let a label outgrow a narrow slot (up to 1.8x) rather than ellipsize:
-            # the widget is centred on its slot either way
             mw, nw = child.measure(Gtk.Orientation.HORIZONTAL, -1)[:2]
-            mh, nh = child.measure(Gtk.Orientation.VERTICAL, -1)[:2]
-            grow = 2.6 if isinstance(child, DeviceKey) and not child.pill_above else 1.8
-            aw, ah = max(pw, mw, min(nw, pw * grow)), max(ph, mh)
-            px -= (aw - pw) / 2
+            mh = child.measure(Gtk.Orientation.VERTICAL, -1)[0]
+            ah = max(ph, mh)
             py -= (ah - ph) / 2
-            child.allocate(int(aw), int(ah), -1, Gsk.Transform.new().translate(Graphene.Point().init(px, py)))
+            slots.append((px + pw / 2, py, py + ah, max(pw, mw), nw))
+        # a label outgrows a narrow slot rather than ellipsize, into the room its neighbours leave free;
+        # the hovered one takes its full width, drawn over the others (do_snapshot)
+        widths = geo.fit_widths(slots, gap=4 * scale)
+        for child, (cx, top, bottom, low, want), aw in zip(children, slots, widths):
+            if isinstance(child, DeviceKey) and child.hovered:
+                aw = max(low, want)
+            px = min(max(cx - aw / 2, 0), max(width - aw, 0))
+            child.allocate(int(aw), int(bottom - top), -1, Gsk.Transform.new().translate(Graphene.Point().init(px, top)))
         # the stick's own pill, top-right of it
         x, y, w, h = geo.STICK_PRESS_PILL
         px, py = ox + x * geo.IMAGE_W * scale, oy + y * geo.IMAGE_H * scale
@@ -257,7 +279,9 @@ class DeviceView(Gtk.Widget):
             # the device is black: the accent colour shows on it in both the light and the dark theme
             color = Adw.StyleManager.get_default().get_accent_color_rgba()
             snapshot.append_stroke(pb.to_path(), Gsk.Stroke.new(max(1.5, 2 * self._scale)), color)
-        for child in list(self.keys.values()) + list(self.modes.values()) + [self._press_pill]:
+        children = list(self.keys.values()) + list(self.modes.values()) + [self._press_pill]
+        children.sort(key=lambda c: isinstance(c, DeviceKey) and c.hovered)      # the hovered key on top
+        for child in children:
             self.snapshot_child(child, snapshot)
 
 

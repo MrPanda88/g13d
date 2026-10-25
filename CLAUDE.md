@@ -51,7 +51,8 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
     partner, key replacement, `merge_taps`, `History`) live in `config/macro_edit.py`. Right-click a step:
     Insert before / after (sets the insertion mark used by Add step and Record)
   - `device_geometry.py`: normalised rects of every control on `data/g13.png` (pure data, tested);
-    `DeviceView` scales the photo to fit and places the overlays from them, so nothing drifts on resize
+    `DeviceView` scales the photo to fit and places the overlays from them, so nothing drifts on resize; labels outgrow their
+    slot only into the room their neighbours leave (`device_geometry.fit_widths`), the hovered key shows its full label on top
   - `data/g13.png` is generated from `image/g13_naked_template.jpeg` (user-supplied, legends already removed) by
     `scripts/make_device_image.py` (checkerboard keyed out); `scripts/check_geometry.py OUT.png` overlays the rects
 - `g13d/data/`: udev rule, systemd unit, desktop entry, device picture, GNOME Shell extension (`make install-extension`;
