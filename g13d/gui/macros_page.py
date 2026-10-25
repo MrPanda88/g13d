@@ -12,7 +12,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk  # noqa: E402
 
-from g13d.config.loader import ConfigStore  # noqa: E402
+from g13d.config.scope import ProfileScope  # noqa: E402
 from g13d.config.macro import MAX_COUNT, REPEAT_MODES, Macro, Step  # noqa: E402
 from g13d.config.macro_edit import History, partner, replace_key  # noqa: E402
 from g13d.config.model import MACRO_STYLES  # noqa: E402
@@ -29,7 +29,8 @@ _REPEAT_HELP = {"once": "Plays the whole macro each time the key is pressed.",
                 "toggle": "One press starts repeating, the next press stops.",
                 "count": "One press plays the macro {n} times in a row. Pressing the key again while it plays "
                          "stops it at once, like Toggle."}
-Retarget = Callable[[str, str, str | None], None]   # (kind, old name, new name or None when deleted)
+# (kind, old name, new name or None when deleted, macro is global: every profile is concerned, else the selected one)
+Retarget = Callable[[str, str, str | None, bool], None]
 
 
 def unique_macro_name(base: str, taken) -> str:
@@ -50,9 +51,10 @@ def confirm_delete_macro(parent: Gtk.Widget, name: str, on_delete: Callable[[], 
 
 class MacroEditor(WidePage):
     """Edits one macro (edit()). on_saved(renamed) runs after every save; a rename has already been retargeted.
-    `style` is the look of the steps (macro_steps), on_style(style) saves the user's choice."""
+    `style` is the look of the steps (macro_steps), on_style(style) saves the user's choice. Macros are read and
+    saved through `store`, the selected profile's scope (its own macros and the global ones)."""
 
-    def __init__(self, store: ConfigStore, client, toast: Callable[[str], None], on_saved: Callable[[bool], None],
+    def __init__(self, store: ProfileScope, client, toast: Callable[[str], None], on_saved: Callable[[bool], None],
                  retarget: Retarget, style: str = "flow", on_style: Callable[[str], None] | None = None):
         super().__init__()
         self._store = store
@@ -301,10 +303,10 @@ class MacroEditor(WidePage):
             return
         self._name.remove_css_class("error")
         old = m.name
-        self._store.delete_macro(old)
+        is_global = self._store.is_global_macro(old)
         m.name = new_name
-        self._store.save_macro(m)
-        self._retarget("macro", old, new_name)
+        self._store.rename_macro(old, m)
+        self._retarget("macro", old, new_name, is_global)
         self._do_save(renamed=True)
 
     def _apply_description(self) -> None:
@@ -595,7 +597,7 @@ class MacroEditor(WidePage):
 class MacrosPage(Gtk.Box):
     """The gtk layout's Macros tab: the list of macros on the left, the editor on the right."""
 
-    def __init__(self, store: ConfigStore, client, toast: Callable[[str], None], on_macros_changed: Callable[[], None],
+    def __init__(self, store: ProfileScope, client, toast: Callable[[str], None], on_macros_changed: Callable[[], None],
                  retarget: Retarget, style: str = "flow", on_style: Callable[[str], None] | None = None):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL)
         self._store = store
@@ -627,7 +629,14 @@ class MacrosPage(Gtk.Box):
             self._list.remove(row)
         for name in sorted(self._macros):
             row = Gtk.ListBoxRow()
-            row.set_child(Gtk.Label(label=name, xalign=0, margin_start=6, margin_top=8, margin_bottom=8, ellipsize=3))
+            box = Gtk.Box(spacing=6, margin_start=6, margin_end=6, margin_top=8, margin_bottom=8)
+            box.append(Gtk.Label(label=name, xalign=0, hexpand=True, ellipsize=3, use_markup=False))
+            if self._store.is_global_macro(name):
+                mark = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+                mark.set_tooltip_text("Global")
+                mark.add_css_class("dim-label")
+                box.append(mark)
+            row.set_child(box)
             row.macro_name = name  # type: ignore[attr-defined]
             self._list.append(row)
             if name == selected:
@@ -670,6 +679,7 @@ class MacrosPage(Gtk.Box):
             self._store.delete_macro(name)
             self.editor.edit(None)
             self.reload()
-            self._retarget("macro", name, None)
+            is_global = self._store.is_global_macro(name)
+            self._retarget("macro", name, None, is_global)
             self._on_macros_changed()
         confirm_delete_macro(self, name, delete)

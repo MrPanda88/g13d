@@ -1,7 +1,8 @@
 """Minimal TOML writer for the simple shapes g13d uses (tomli-w is not packaged everywhere).
 
 Supports: str, bool, int, float, lists of scalars, dicts (as tables, nested one level, inline
-when used as a value inside a table). Output always round-trips through tomllib.
+when used as a value inside a table, unless they hold tables or lists of tables: a sub-table then, since an
+inline table must fit on one line). Output always round-trips through tomllib.
 """
 from __future__ import annotations
 
@@ -36,6 +37,11 @@ def _scalar(v) -> str:
     raise TypeError(f"cannot serialise {type(v).__name__}")
 
 
+def _needs_table(v) -> bool:
+    return isinstance(v, dict) and any(isinstance(x, dict) or (isinstance(x, (list, tuple)) and any(isinstance(y, dict) for y in x))
+                                       for x in v.values())
+
+
 def dumps(data: dict) -> str:
     lines: list[str] = []
     tables: list[tuple[str, dict]] = []
@@ -50,7 +56,7 @@ def dumps(data: dict) -> str:
         lines.append(f"[{_key(name)}]")
         sub: list[tuple[str, dict]] = []
         for k, v in table.items():
-            if isinstance(v, dict) and any(isinstance(x, dict) for x in v.values()):
+            if _needs_table(v):
                 sub.append((k, v))
             else:
                 lines.append(f"{_key(k)} = {_scalar(v)}")

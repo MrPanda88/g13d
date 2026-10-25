@@ -81,5 +81,5 @@ def test_store_roundtrip(tmp_path):
     lib.add(Action.key("KEY_F1"))
     store.save_library(lib)
     assert store.load_library() == lib
-    (tmp_path / "actions.toml").write_text("not toml [[[")
+    (tmp_path / "global" / "actions.toml").write_text("not toml [[[")
     assert store.load_library().entries == []

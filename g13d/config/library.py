@@ -1,12 +1,13 @@
 """The assignment library: every action the user has bound or saved, ready to be dropped on a key.
 
-Stored in ~/.config/g13d/actions.toml as a table of label -> action:
+Each profile has its own, stored in its file; the global one (~/.config/g13d/global/actions.toml) is added to every
+profile's. Both are a table of label -> action:
 
     [actions]
     "Ctrl+C" = { combo = ["KEY_LEFTCTRL", "KEY_C"] }
     Enter = "KEY_ENTER"
 
-Macros are not stored here: the GUI lists them straight from the macro files.
+Macros are not stored here: the GUI lists them from the profile and the global macros.
 """
 from __future__ import annotations
 
@@ -66,15 +67,18 @@ class ActionLibrary:
         entry.action = new
         return True
 
-    def absorb(self, profiles: Iterable[Profile]) -> int:
-        """Add every binding of every profile that is not listed yet. Returns how many were added."""
+    def absorb(self, profiles: Iterable[Profile], skip: ActionLibrary | None = None) -> int:
+        """Add every binding of every profile that is not listed yet (nor in `skip`). Returns how many were added."""
         added = 0
         for prof in profiles:
             for mode in MODES:
                 for action in prof.modes.get(mode, {}).values():
-                    if self.add(action) is not None:
+                    if (skip is None or skip.find(action) is None) and self.add(action) is not None:
                         added += 1
         return added
+
+    def copy(self) -> ActionLibrary:
+        return ActionLibrary([LibraryEntry(e.label, e.action) for e in self.entries])
 
     def retarget(self, kind: str, old: str, new: str | None) -> bool:
         """A profile was renamed (new) or deleted (None): fix or drop the entries that pointed at it."""

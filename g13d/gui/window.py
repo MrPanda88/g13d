@@ -22,6 +22,7 @@ from g13d.config.library import LibraryEntry  # noqa: E402
 from g13d.config.loader import ConfigStore  # noqa: E402
 from g13d.config.macro import Macro  # noqa: E402
 from g13d.config.model import GUI_LAYOUTS, MODES, Action, Profile, Settings, order_profiles  # noqa: E402
+from g13d.config.scope import ProfileScope  # noqa: E402
 
 from .action_editor import ActionEditor  # noqa: E402
 from .widgets import end_edit_on_click, focus_entry  # noqa: E402
@@ -63,6 +64,9 @@ CSS = """
             padding: 0 5px; min-height: 0; border: 1px solid alpha(@view_fg_color, 0.3); }
 .g13-device-key.g13-bound .g13-pill { border-color: alpha(@accent_color, 0.7); }
 .g13-device-key.g13-inactive .g13-pill { color: alpha(@view_fg_color, 0.5); border-style: dashed; }
+.navigation-sidebar row.g13-current { background: alpha(@accent_bg_color, 0.25); }
+.g13-logo.g13-offline { filter: grayscale(1); opacity: 0.45; }
+.g13-device-key:hover .g13-pill { box-shadow: 0 2px 6px alpha(black, 0.6); }
 .g13-device-key.g13-pressed .g13-cap { background: @accent_bg_color; box-shadow: 0 0 8px 2px @accent_bg_color; }
 .g13-device-key.g13-drop .g13-cap { box-shadow: 0 0 0 3px @accent_bg_color; }
 .g13-device-key.g13-drop { box-shadow: none; }
@@ -91,7 +95,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._profiles: dict[str, Profile] = {}
         self._profile: Profile | None = None
         self._settings: Settings = store.load_settings()
-        self._library = store.load_library()
+        self._library = store.load_library()        # the global one; each profile has its own too
+        self._scope = ProfileScope(store, lambda: self._profile)
         self._layout = layout if layout in GUI_LAYOUTS else self._settings.gui_layout
         self._mode = 1
         self._reload_timer = 0
@@ -161,7 +166,7 @@ class MainWindow(Adw.ApplicationWindow):
         if self._layout == "lgs":
             self._keys = DevicePage(self._edit_control, self._mode_selected, self._drop_action,
                                     lambda: self.show_tab("stick"), self._label_for, self._unassign)
-            self._macro_editor = MacroEditor(self._store, self._client, self.toast, lambda _renamed: self._macros_changed(),
+            self._macro_editor = MacroEditor(self._scope, self._client, self.toast, lambda _renamed: self._macros_changed(),
                                              self._retarget, self._settings.gui_macro_style, self._macro_style_changed)
             # the Keys tab shows the G13, or the macro being edited in its place
             self._keys_stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
@@ -171,7 +176,8 @@ class MainWindow(Adw.ApplicationWindow):
             self._profiles_ui = ProfilesBar(self._profile_picked, self._profile_command)
             content.add_bottom_bar(self._profiles_ui)
             self._library_panel = LibraryPanel(self._library_new, self._library_edit, self._library_rename, self._library_remove,
-                                               self._macro_command, self._settings.gui_library_sort, self._library_sort_changed)
+                                               self._macro_command, self._settings.gui_library_sort, self._library_sort_changed,
+                                               self._library_scope)
             side = Adw.ToolbarView()
             side_header = Adw.HeaderBar(show_end_title_buttons=False)
             side_header.set_title_widget(Gtk.Label(label="Assignments", css_classes=["heading"]))
@@ -202,7 +208,7 @@ class MainWindow(Adw.ApplicationWindow):
             root: Gtk.Widget = split
         else:
             self._keys = KeysPage(self._edit_control, self._mode_selected, self._drop_action, self._label_for, self._unassign)
-            self._macros_page = MacrosPage(self._store, self._client, self.toast, self._macros_changed, self._retarget,
+            self._macros_page = MacrosPage(self._scope, self._client, self.toast, self._macros_changed, self._retarget,
                                            self._settings.gui_macro_style, self._macro_style_changed)
             self._macro_editor = self._macros_page.editor
             keys_widget = Gtk.ScrolledWindow(child=self._keys, hscrollbar_policy=Gtk.PolicyType.AUTOMATIC)
@@ -273,9 +279,9 @@ class MainWindow(Adw.ApplicationWindow):
         if not self._profiles:
             self._store.ensure_defaults()
             self._profiles = self._store.load_profiles()
-        if self._library.absorb(self._profiles.values()):
-            self._store.save_library(self._library)
-            self._refresh_library()
+        for prof in self._profiles.values():
+            if prof.library.absorb([prof], skip=self._library):
+                self._store.save_profile(prof)
         wanted = self._profile.name if self._profile else self._client.profile
         self._rebuild_list()
         self._select_profile(wanted if wanted in self._profiles else next(iter(self._profiles)), activate=False)
@@ -300,6 +306,12 @@ class MainWindow(Adw.ApplicationWindow):
         self._schedule_reload()
 
     def _select_profile(self, name: str, activate: bool) -> None:
+        if self._profile is not None and self._profile.name != name:
+            # the macro being edited belongs to the profile we leave: save it there, then let it go
+            leaving = self._macro_editor.current.name if self._macro_editor.current is not None else None
+            self._macro_editor.edit(None)
+        else:
+            leaving = None
         self._profile = self._profiles.get(name)
         self._profiles_ui.select(name)
         self._updating = True
@@ -307,6 +319,15 @@ class MainWindow(Adw.ApplicationWindow):
         self._stick.set_profile(self._profile)
         self._lcd.set_profile(self._profile, self._ordered())
         self._updating = False
+        if self._editing_macro_lgs():
+            # stay in the editor: the new profile's macro by the same name, else its first one, else an empty editor
+            macros = self._scope.load_macros()
+            pick = leaving if leaving in macros else (sorted(macros, key=str.casefold) or [None])[0]
+            if pick is not None:
+                self._open_macro(macros[pick])
+        self._refresh_library()
+        if self._macros_page is not None:
+            self._macros_page.reload()
         if activate and self._client.available and name != self._client.profile:
             self._client.set_profile(name)
 
@@ -514,10 +535,14 @@ class MainWindow(Adw.ApplicationWindow):
         dlg.connect("response", on_resp)
         dlg.present(self)
 
-    def _retarget(self, kind: str, old: str, new: str | None) -> None:
-        """A profile or macro was renamed/deleted: fix every binding and library entry that pointed at it."""
+    def _retarget(self, kind: str, old: str, new: str | None, everywhere: bool = True) -> None:
+        """A profile or macro was renamed/deleted: fix every binding and library entry that pointed at it. A macro
+        of the selected profile only concerns that profile (everywhere=False); a global one, every profile that
+        has no macro of its own by that name."""
         for prof in self._profiles.values():
-            touched = False
+            if kind == "macro" and (prof is not self._profile if not everywhere else old in prof.macros):
+                continue
+            touched = prof.library.retarget(kind, old, new)
             for mode in MODES:
                 for control, action in list(prof.modes.get(mode, {}).items()):
                     if action.type == kind and action.name == old:
@@ -526,7 +551,7 @@ class MainWindow(Adw.ApplicationWindow):
                         touched = True
             if touched:
                 self._store.save_profile(prof)
-        if self._library.retarget(kind, old, new):
+        if (kind != "macro" or everywhere) and self._library.retarget(kind, old, new):
             self._store.save_library(self._library)
         self._keys.refresh()
         self._refresh_library()
@@ -566,8 +591,8 @@ class MainWindow(Adw.ApplicationWindow):
     def _editor(self, title: str, action: Action, on_save, on_unassign=None) -> ActionEditor:
         """The one assignment editor: for a key or a library entry, with the library name of the action."""
         pages = self._client.available_pages or ["status", "clock", "system", "media", "text", "blank"]
-        macros = sorted(self._store.load_macros())
-        entry = self._library.find(action)
+        macros = sorted(self._scope.load_macros())
+        entry = self._find_entry(action)
         return ActionEditor(title, action, macros, self._ordered(), pages, on_save, on_unassign, entry.label if entry else "")
 
     def _edit_control(self, control: str) -> None:
@@ -629,19 +654,21 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ---- macros (lgs layout: from the library, edited in place of the G13) ---------------------
     def _macro_command(self, cmd: str, name: str) -> None:
-        macros = self._store.load_macros()
+        macros = self._scope.load_macros()
         match cmd:
             case "new":
                 macro = Macro(unique_macro_name("New macro", macros))
-                self._store.save_macro(macro)
+                self._scope.save_macro(macro)
                 self._macros_changed()
                 self._open_macro(macro)
                 self._macro_editor.focus_name()
             case "edit" if name in macros:
                 self._open_macro(macros[name])
+            case "select" if name in macros and self._editing_macro_lgs():
+                self._open_macro(macros[name])
             case "duplicate" if name in macros:
                 macro = macros[name].copy(unique_macro_name(f"{name} copy", macros))
-                self._store.save_macro(macro)
+                self._scope.save_macro(macro)
                 self._macros_changed()
                 self._open_macro(macro)
             case "delete" if name in macros:
@@ -649,10 +676,52 @@ class MainWindow(Adw.ApplicationWindow):
                     current = self._macro_editor.current
                     if current is not None and current.name == name:
                         self._close_macro()
-                    self._store.delete_macro(name)
-                    self._retarget("macro", name, None)
+                    is_global = self._scope.is_global_macro(name)
+                    self._scope.delete_macro(name)
+                    self._retarget("macro", name, None, is_global)
                     self._macros_changed()
                 confirm_delete_macro(self, name, delete)
+            case "make-global" if self._profile is not None and name in self._profile.macros:
+                self._macro_make_global(name)
+            case "make-local" if self._scope.is_global_macro(name):
+                self._macro_make_local(name)
+
+    def _macro_make_global(self, name: str) -> None:
+        """Move a macro of the selected profile to the global ones. Identical copies in other profiles (duplicated
+        profiles) merge into it; a different macro by the same name elsewhere blocks the move."""
+        macro = self._profile.macros[name]
+        clash = [p.name for p in self._profiles.values() if name in p.macros and p.macros[name].to_toml() != macro.to_toml()]
+        if clash:
+            self.toast(f"Other macros are named “{name}” in: {', '.join(clash)}. Rename one first")
+            return
+        self._close_macro_named(name)
+        self._store.save_macro(macro)
+        for prof in self._profiles.values():
+            if prof.macros.pop(name, None) is not None:
+                self._store.save_profile(prof)
+        self._macros_changed()
+        self.toast(f"“{name}” is global: every profile has it")
+
+    def _macro_make_local(self, name: str) -> None:
+        """Give the global macro back to the profiles: the selected one, and every other one whose keys use it."""
+        macro = self._store.load_macros()[name]
+        self._close_macro_named(name)
+        for prof in self._profiles.values():
+            uses = any(a == Action.macro(name) for m in MODES for a in prof.modes.get(m, {}).values())
+            if (prof is self._profile or uses) and name not in prof.macros:
+                prof.macros[name] = macro.copy()
+                self._store.save_profile(prof)
+        self._store.delete_macro(name)
+        self._macros_changed()
+        self.toast(f"“{name}” now belongs to “{self._profile.name}”" if self._profile else f"“{name}” is no longer global")
+
+    def _close_macro_named(self, name: str) -> None:
+        current = self._macro_editor.current
+        if current is not None and current.name == name:
+            if self._macros_page is not None:
+                self._macro_editor.edit(None)
+            else:
+                self._close_macro()
 
     def _open_macro(self, macro: Macro) -> None:
         if self._macros_page is not None:      # gtk layout: the Macros tab
@@ -663,12 +732,18 @@ class MainWindow(Adw.ApplicationWindow):
         self._macro_editor.edit(macro)
         self.show_tab("keys")
         self._keys_stack.set_visible_child_name("macro")
+        self._library_panel.set_current_macro(macro.name)
 
     def _close_macro(self) -> None:
         """Back to the G13 picture (stops a recording, saves pending changes)."""
         self._macro_editor.edit(None)
         if self._macros_page is None:
             self._keys_stack.set_visible_child_name("device")
+            self._library_panel.set_current_macro(None)
+
+    def _editing_macro_lgs(self) -> bool:
+        """lgs layout with the macro editor in place of the G13 picture."""
+        return self._macros_page is None and self._keys_stack.get_visible_child_name() == "macro"
 
     def _schedule_reload(self) -> None:
         if self._reload_timer:
@@ -682,59 +757,109 @@ class MainWindow(Adw.ApplicationWindow):
         return False
 
     # ---- assignment library ----------------------------------------------------------------
+    def _find_entry(self, action: Action) -> LibraryEntry | None:
+        """The library entry of `action`: the selected profile's own first, then the global one."""
+        own = self._profile.library.find(action) if self._profile is not None else None
+        return own or self._library.find(action)
+
+    def _owner(self, entry: LibraryEntry):
+        """(library holding `entry`, save function)."""
+        if any(e is entry for e in self._library.entries) or self._profile is None:
+            return self._library, lambda: self._store.save_library(self._library)
+        prof = self._profile
+        return prof.library, lambda: self._store.save_profile(prof)
+
     def _label_for(self, action: Action) -> str:
         """What a key shows: the library name of its assignment, else the layout-aware label."""
-        entry = self._library.find(action)
+        entry = self._find_entry(action)
         return entry.label if entry is not None else action_label(action)
 
     def _refresh_library(self) -> None:
-        if self._library_panel is not None:
-            self._library_panel.set_library(self._library, list(self._store.load_macros()))
+        if self._library_panel is None:
+            return
+        own = self._profile.library.entries if self._profile is not None else []
+        entries = [(e, False) for e in own] + [(e, True) for e in self._library.entries
+                                               if self._profile is None or self._profile.library.find(e.action) is None]
+        macros = [(n, self._scope.is_global_macro(n)) for n in self._scope.load_macros()]
+        current = self._macro_editor.current if self._editing_macro_lgs() else None
+        self._library_panel.set_current_macro(current.name if current is not None else None)    # follows a rename
+        self._library_panel.set_library(entries, macros)
+
+    def _library_changed(self) -> None:
+        self._refresh_library()
+        self._keys.refresh()
 
     def _library_add(self, action: Action, label: str = "") -> None:
-        """Make sure `action` is in the library, named `label` when one is given (renames an existing entry)."""
-        if action.type in ("none", "macro"):
+        """Make sure `action` is in the library (the selected profile's, unless it is global), named `label` when one
+        is given (renames an existing entry)."""
+        if action.type in ("none", "macro") or self._profile is None:
             return
-        entry = self._library.find(action)
-        changed = (entry is None and self._library.add(action, label) is not None) or \
-                  (entry is not None and bool(label) and self._library.rename(action, label))
+        entry = self._find_entry(action)
+        if entry is None:
+            changed = self._profile.library.add(action, label) is not None
+            save = lambda: self._store.save_profile(self._profile)   # noqa: E731
+        else:
+            lib, save = self._owner(entry)
+            changed = bool(label) and lib.rename(action, label)
         if changed:
-            self._store.save_library(self._library)
-            self._refresh_library()
-            self._keys.refresh()
+            save()
+            self._library_changed()
 
     def _library_new(self) -> None:
         def on_save(action: Action, label: str) -> None:
             if action.type == "none":
                 self.toast("Choose an action")
-            elif self._library.find(action) is not None:
+            elif self._find_entry(action) is not None:
                 self.toast("That assignment is already in the library")
             else:
                 self._library_add(action, label)
         self._editor("New assignment", Action.none(), on_save).present(self)
 
     def _library_edit(self, entry: LibraryEntry) -> None:
+        lib, save = self._owner(entry)
+
         def on_save(new: Action, label: str) -> None:
             if new.type == "none":
                 self.toast("Choose an action, or remove the entry instead")
                 return
-            if new != entry.action and not self._library.replace(entry.action, new):
+            if new != entry.action and (self._find_entry(new) is not None or not lib.replace(entry.action, new)):
                 self.toast("That assignment is already in the library")
                 return
-            self._library.rename(new, label)
-            self._store.save_library(self._library)
-            self._refresh_library()
+            lib.rename(new, label)
+            save()
+            self._library_changed()
         self._editor(entry.label, entry.action, on_save).present(self)
 
     def _library_rename(self, entry: LibraryEntry, label: str) -> None:
-        if self._library.rename(entry.action, label):
-            self._store.save_library(self._library)
-            self._refresh_library()
+        lib, save = self._owner(entry)
+        if lib.rename(entry.action, label):
+            save()
+            self._library_changed()
 
     def _library_remove(self, entry: LibraryEntry) -> None:
-        if self._library.remove(entry.action):
+        lib, save = self._owner(entry)
+        if lib.remove(entry.action):
+            save()
+            self._library_changed()
+
+    def _library_scope(self, entry: LibraryEntry, to_global: bool) -> None:
+        """Global: the entry leaves every profile's library for the global one. Local: it goes back to the selected
+        profile and to every profile whose keys use it, under the same name."""
+        if to_global:
+            for prof in self._profiles.values():
+                if prof.library.remove(entry.action):
+                    self._store.save_profile(prof)
+            self._library.add(entry.action, entry.label)
             self._store.save_library(self._library)
-            self._refresh_library()
+        else:
+            self._library.remove(entry.action)
+            self._store.save_library(self._library)
+            for prof in self._profiles.values():
+                uses = any(a == entry.action for m in MODES for a in prof.modes.get(m, {}).values())
+                if (prof is self._profile or uses) and prof.library.add(entry.action, entry.label) is not None:
+                    self._store.save_profile(prof)
+        self._library_changed()
+        self._schedule_reload()
 
     # ---- misc -----------------------------------------------------------------------------
     def refresh_labels(self) -> None:
@@ -751,7 +876,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def show_tab(self, name: str) -> None:
         if name == "macros" and self._macros_page is None:      # lgs: no tab, the first macro in place of the G13
-            if (macros := self._store.load_macros()):
+            if (macros := self._scope.load_macros()):
                 self._open_macro(macros[sorted(macros)[0]])
             return
         self._stack.set_visible_child_name(name)
@@ -764,7 +889,7 @@ class MainWindow(Adw.ApplicationWindow):
         if self._macros_page is not None:
             self._macros_page.reload()
         elif (current := self._macro_editor.current) is not None:
-            macros = self._store.load_macros()
+            macros = self._scope.load_macros()
             if current.name in macros:
                 self._macro_editor.edit(macros[current.name])
             else:

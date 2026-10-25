@@ -6,7 +6,7 @@ import pytest
 from g13d.config import tomlout
 from g13d.config.loader import ConfigStore
 from g13d.config.macro import EXAMPLE_MACRO_TOML, Macro, Step
-from g13d.config.model import ConfigError
+from g13d.config.model import Action, ConfigError, Profile
 from g13d.engine.macros import MacroPlayer
 from g13d.engine.recorder import MacroRecorder
 from g13d.hw.names import key_code
@@ -44,12 +44,87 @@ def test_macro_validation():
 def test_store_macros(tmp_path):
     store = ConfigStore(root=tmp_path)
     store.ensure_defaults()
-    assert "example" in store.load_macros()
+    # the example ships inside the default profile, nothing is global at first
+    assert "example" in store.load_profiles()["Default"].macros
+    assert store.load_macros() == {}
     store.save_macro(Macro("Hello World", [Step.tap("KEY_H")]))
-    assert store.macro_path("Hello World").name == "Hello_World.toml"
-    assert set(store.load_macros()) == {"example", "Hello World"}
+    assert store.macro_path("Hello World") == tmp_path / "global" / "macros" / "Hello_World.toml"
+    assert set(store.load_macros()) == {"Hello World"}
     store.delete_macro("Hello World")
-    assert set(store.load_macros()) == {"example"}
+    assert store.load_macros() == {}
+
+
+def test_profile_macros_and_library_roundtrip(tmp_path):
+    store = ConfigStore(root=tmp_path)
+    prof = Profile("P")
+    prof.macros["Craft it"] = Macro("Craft it", [Step.tap("KEY_KP0"), Step.delay(20)], "toggle", 500, "LGS")
+    prof.library.add(Action.key("KEY_Q"), "Heal")
+    prof.set_binding(1, "G1", Action.macro("Craft it"))
+    store.save_profile(prof)
+    back = store.load_profiles()["P"]
+    assert back.macros == prof.macros and back.library == prof.library
+    assert back.binding(1, "G1") == Action.macro("Craft it")
+
+
+def test_profile_copy_owns_its_items():
+    prof = Profile("P")
+    prof.macros["m"] = Macro("m", [Step.tap("KEY_A")])
+    prof.library.add(Action.key("KEY_Q"), "Heal")
+    dup = prof.copy("Q")
+    assert dup.macros == prof.macros and dup.library == prof.library
+    dup.macros["m"].steps.append(Step.delay(5))
+    dup.library.rename(Action.key("KEY_Q"), "Soin")
+    assert prof.macros["m"].steps == [Step.tap("KEY_A")]
+    assert prof.library.entries[0].label == "Heal"
+
+
+def test_migrate_shared_library_and_macros(tmp_path):
+    store = ConfigStore(root=tmp_path)
+    a, b = Profile("A"), Profile("B")
+    a.set_binding(1, "G1", Action.macro("Hello"))
+    a.set_binding(1, "G2", Action.key("KEY_Q"))
+    b.set_binding(1, "G1", Action.key("KEY_Q"))
+    b.set_binding(1, "G2", Action.key("KEY_F1"))
+    store.save_profile(a)
+    store.save_profile(b)
+    (tmp_path / "actions.toml").write_text('[actions]\nHeal = "KEY_Q"\nUnused = "KEY_F5"\n')
+    old = tmp_path / "macros"
+    old.mkdir()
+    (old / "Hello.toml").write_text('name = "Hello"\nsteps = [{ tap = "KEY_H" }]\n')
+    (old / "Spare.toml").write_text('name = "Spare"\nsteps = []\n')
+    (tmp_path / "config.toml").write_text('[general]\ndefault_profile = "B"\n')
+    store.ensure_defaults()
+    profs = store.load_profiles()
+    assert set(profs) == {"A", "B"}
+    assert set(profs["A"].macros) == {"Hello"}
+    assert set(profs["B"].macros) == {"Spare"}              # used by nobody: the default profile keeps it
+    assert [e.label for e in profs["A"].library.entries] == ["Heal"]
+    assert [e.label for e in profs["B"].library.entries] == ["Heal"]
+    assert store.load_macros() == {} and store.load_library().entries == []
+    assert (tmp_path / "actions.toml.pre-1.5").exists() and (tmp_path / "macros.pre-1.5").is_dir()
+    assert not store.migrate_shared()                       # once
+
+
+def test_scope_saves_where_the_macro_lives(tmp_path):
+    from g13d.config.scope import ProfileScope
+    store = ConfigStore(root=tmp_path)
+    prof = Profile("P")
+    store.save_profile(prof)
+    store.save_macro(Macro("Global", [Step.tap("KEY_F1")]))
+    scope = ProfileScope(store, lambda: prof)
+    scope.save_macro(Macro("Mine", [Step.tap("KEY_A")]))
+    assert "Mine" in store.load_profiles()["P"].macros and "Mine" not in store.load_macros()
+    assert set(scope.load_macros()) == {"Global", "Mine"} and scope.is_global_macro("Global")
+    g = scope.load_macros()["Global"]
+    g.steps.append(Step.delay(10))
+    scope.save_macro(g)
+    assert store.load_macros()["Global"].steps[-1] == Step.delay(10)
+    m = scope.load_macros()["Mine"]
+    m.name = "Renamed"
+    scope.rename_macro("Mine", m)
+    assert set(store.load_profiles()["P"].macros) == {"Renamed"}
+    scope.delete_macro("Renamed")
+    assert store.load_profiles()["P"].macros == {}
 
 
 def _player(vi, macros):

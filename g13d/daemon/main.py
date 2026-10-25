@@ -39,7 +39,7 @@ class Daemon:
         self.store = store
         self.settings = store.load_settings()
         self.profiles: dict[str, Profile] = store.load_profiles() or {"Default": default_profile()}
-        self.macros = store.load_macros()
+        self.global_macros = store.load_macros()
         state = store.load_state()
         self.locked_profile: str = state.get("locked", "") if state.get("locked", "") in self.profiles else ""
         # a locked profile is always the active one and never left automatically
@@ -59,7 +59,7 @@ class Daemon:
 
         self.vinput = VirtualInput()
         self.runner = ActionRunner(self.vinput, self)
-        self.player = MacroPlayer(self.vinput, lambda n: self.macros.get(n), self._on_macros_changed)
+        self.player = MacroPlayer(self.vinput, lambda n: self.profile.macros.get(n) or self.global_macros.get(n), self._on_macros_changed)
         self.stick = Stick(self.runner, self.vinput, lambda name: self.profile.binding(self.mode, name))
         self.screen = Screen(self, on_page_change=self._on_lcd_page_change)
         self.keypad: Keypad | None = None
@@ -387,6 +387,11 @@ class Daemon:
         if self.focus:
             self._on_focus(self.focus.current)
 
+    @property
+    def macros(self) -> dict:
+        """The macros the active profile can play: its own, then the global ones."""
+        return {**self.global_macros, **self.profile.macros}
+
     def _activate(self, prof: Profile) -> None:
         self._release_everything()
         self.profile = prof
@@ -395,6 +400,8 @@ class Daemon:
             self.keypad.set_passthrough(prof.stick.mode == "passthrough")
         if self.leds:
             self.leds.set_backlight(prof.backlight)
+        if self.dbus:
+            self.dbus.emit_properties_changed({"Macros": sorted(self.macros)})
 
     def lcd_page(self, name: str) -> None:
         self.screen.show(name)
@@ -447,7 +454,7 @@ class Daemon:
             log.error("no valid profile found in %s, keeping the current ones", self.store.profiles_dir)
             return
         self.profiles = profiles
-        self.macros = self.store.load_macros()
+        self.global_macros = self.store.load_macros()
         if self.locked_profile and self.locked_profile not in profiles:
             self.locked_profile = ""
         self.manual_profile = profiles.get(self.manual_profile.name) or self._pick_profile(None)

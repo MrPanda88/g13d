@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .library import ActionLibrary
+    from .macro import Macro
 
 G_KEYS = tuple(f"G{i}" for i in range(1, 23))
 LCD_KEYS = ("LCD1", "LCD2", "LCD3", "LCD4", "LCD_MENU")
@@ -199,14 +204,23 @@ class StickConfig:
 Bindings = dict[str, Action]
 
 
+def _new_library() -> ActionLibrary:
+    from .library import ActionLibrary  # local import: library.py and macro.py import this module
+    return ActionLibrary()
+
+
 @dataclass
 class Profile:
+    """One profile file: its bindings and its own assignment library and macros (a profile's `library` and `macros`
+    belong to it alone; the global ones, in the ConfigStore, are added to every profile's)."""
     name: str
     backlight: tuple[int, int, int] = (0, 0, 255)
     icon: str = ""              # GUI only: image file path or themed icon name shown on the profile tile
     app: str = ""               # window class / app id / process the profile is for (auto-switch), "" = none
     stick: StickConfig = field(default_factory=StickConfig)
     modes: dict[int, Bindings] = field(default_factory=lambda: {m: {} for m in MODES})
+    library: ActionLibrary = field(default_factory=_new_library)
+    macros: dict[str, Macro] = field(default_factory=dict)
     # [lcd] pages of profiles written before 1.2 (pages are global now): read once for migration, never written
     legacy_lcd_pages: list[str] | None = field(default=None, compare=False, repr=False)
 
@@ -241,6 +255,16 @@ class Profile:
                 if act.type != "none":
                     bindings[control] = act
             modes[m] = bindings
+        from .library import ActionLibrary
+        from .macro import Macro
+        raw_macros = d.get("macros", {}) or {}
+        if not isinstance(raw_macros, dict):
+            raise ConfigError("[macros] must be a table of macros")
+        macros = {}
+        for mname, raw in raw_macros.items():
+            if not isinstance(raw, dict):
+                raise ConfigError(f"[macros.{mname}] must be a table")
+            macros[str(mname)] = Macro.from_toml({**raw, "name": str(mname)})
         return cls(
             name=str(d.get("name", fallback_name)),
             backlight=backlight,  # type: ignore[arg-type]
@@ -248,6 +272,8 @@ class Profile:
             app=str(d.get("app", "")),
             stick=StickConfig.from_toml(d.get("stick")),
             modes=modes,
+            library=ActionLibrary.from_toml({"actions": d.get("actions", {})}),
+            macros=macros,
             legacy_lcd_pages=[str(p) for p in lcd["pages"]] if isinstance(lcd.get("pages"), list) else None,
         )
 
@@ -261,11 +287,18 @@ class Profile:
         }
         for m in MODES:
             out[f"m{m}"] = {c: a.to_toml() for c, a in sorted(self.modes.get(m, {}).items(), key=_control_order)}
+        if self.library.entries:
+            out.update(self.library.to_toml())
+        if self.macros:
+            out["macros"] = {name: {k: v for k, v in m.to_toml().items() if k != "name"}
+                             for name, m in sorted(self.macros.items(), key=lambda kv: kv[0].casefold())}
         return out
 
     def copy(self, new_name: str) -> Profile:
+        """A duplicate with its own copy of everything, assignment library and macros included."""
         return replace(self, name=new_name, stick=replace(self.stick),
-                       modes={m: dict(b) for m, b in self.modes.items()})
+                       modes={m: dict(b) for m, b in self.modes.items()},
+                       library=self.library.copy(), macros={n: m.copy() for n, m in self.macros.items()})
 
 
 def order_profiles(names, order: list[str]) -> list[str]:

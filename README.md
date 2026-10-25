@@ -94,7 +94,7 @@ deadzone = 0.25
 [m1]
 G1 = "KEY_1"                                 # single key (evdev name)
 G8 = { combo = ["KEY_LEFTCTRL", "KEY_C"] }   # several keys together
-G9 = { macro = "hello" }                     # macro from ~/.config/g13d/macros/hello.toml
+G9 = { macro = "hello" }                     # macro of this profile ([macros.hello] below) or a global one
 G10 = { mouse = "BTN_LEFT" }
 G11 = { mode = 2 }                           # jump to M2
 G12 = { profile = "Gaming" }
@@ -144,10 +144,13 @@ status` says whether focus tracking is active. Other desktops can provide the sa
 
 ## Macros
 
-One TOML file per macro in `~/.config/g13d/macros/`, bound with `{ macro = "name" }`:
+Macros belong to a profile: they live in its file as `[macros.NAME]` tables and are bound with
+`{ macro = "NAME" }`. Duplicating a profile copies them. A macro can also be made **global** (GUI:
+right-click it → Make global): it then lives in `~/.config/g13d/global/macros/NAME.toml` and every
+profile has it (a profile's own macro of the same name wins).
 
 ```toml
-name = "example"
+[macros.example]
 description = "Select the current line and copy it"
 repeat = "once"            # once | while_held | toggle | count (with count = N; a new press stops it)
 repeat_delay = 0           # ms between loops
@@ -248,9 +251,12 @@ In both:
   
   
 Every change is saved immediately and the daemon reloads it. Profiles are plain TOML, so the GUI
-and a text editor can be mixed freely. The assignment library lives in `~/.config/g13d/actions.toml`
-(label → action); it is seeded from the bindings of your profiles and grows with every binding you
-make. Macros are listed from `macros/` directly.
+and a text editor can be mixed freely. Each profile has its own assignment library (`[actions]` in its
+file, label → action, the names keys show): it is seeded from the profile's bindings and grows with every
+binding you make. Right-click an entry → Make global to put it in `~/.config/g13d/global/actions.toml`,
+shared by every profile (marked with a globe). Configurations from before 1.5 (one shared `actions.toml` and
+`macros/`) are converted once: each profile gets the names and macros it uses, the old files are kept as
+`*.pre-1.5`.
 
 ## CLI
 

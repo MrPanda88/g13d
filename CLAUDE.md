@@ -44,7 +44,8 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
     names `classic` / `device` are still accepted in config.toml
   - macros: `macros_page.MacroEditor` edits one macro; the gtk layout wraps it in the Macros tab (`MacrosPage`, list +
     editor), the lgs layout has no Macros tab: macros are created (+ on the library's Macros section) and edited
-    (right-click) from the library, the editor replacing the G13 photo (`_keys_stack`, back button or Esc).
+    (right-click; once the editor shows, a left click on a macro switches to it, and so does a profile switch: same
+    name, else the first macro) from the library, the editor replacing the G13 photo (`_keys_stack`, back button or Esc).
     Steps are drawn by `macro_steps.py` in three styles (`[gui] macro_style`: icons / flow / timeline); every change
     of the steps goes through `MacroEditor._change` (undo history, redraw, save); pure helpers (press/release
     partner, key replacement, `merge_taps`, `History`) live in `config/macro_edit.py`. Right-click a step:
@@ -58,9 +59,13 @@ GTK4 ≥ 4.12 and libadwaita ≥ 1.7. A G13 plugged into the development machine
   --headless --wayland --no-x11 --virtual-monitor 800x600` and call it on that private bus; delete
   `/run/user/UID/gnome-shell-disable-extensions` if a killed test run left it, or every extension is off at next login)
 - User config: `~/.config/g13d/config.toml` (settings incl. the global `[lcd]` pages/options and `[gui]`),
-  `profiles/*.toml` (backlight, stick, bindings; `[lcd]` in old profiles is read once for migration), `macros/*.toml`,
-  `actions.toml` (assignment library, `config/library.py`, seeded from the profiles' bindings and fed by every binding
-  made in the GUI)
+  `profiles/*.toml` (backlight, stick, bindings, and the profile's own assignment library `[actions]` and macros
+  `[macros.NAME]`; `[lcd]` in old profiles is read once for migration), `global/actions.toml` + `global/macros/*.toml`
+  (global items: added to every profile, a profile's own item wins a name clash). The library (`config/library.py`)
+  is seeded from each profile's bindings and fed by every binding made in the GUI. The GUI edits macros through
+  `config/scope.py:ProfileScope` (saves each where it lives); the daemon plays the active profile's macros, then the
+  global ones. Pre-1.5 shared `actions.toml` / `macros/` are split into the profiles once (`ConfigStore.migrate_shared`,
+  old files renamed `*.pre-1.5`)
 
 ## Progress
 - M0 hardware validation: done (2026-10-17)
