@@ -1,5 +1,5 @@
 Name:           g13d
-Version:        1.4.0
+Version:        1.5.0
 Release:        1%{?dist}
 Summary:        Native Linux driver for the Logitech G13 gameboard, with a GTK4 GUI
 
@@ -101,5 +101,8 @@ cp -a g13d/data/gnome-shell/g13d@g13d.org %{buildroot}%{_datadir}/gnome-shell/ex
 %{_datadir}/gnome-shell/extensions/g13d@g13d.org/
 
 %changelog
+* Sun Oct 25 2026 Raphaël Lang <42946274+MrPanda88@users.noreply.github.com> - 1.5.0-1
+- g13d 1.5.0: per-profile assignments and macros, app icon
+
 * Tue Oct 20 2026 Raphaël Lang <42946274+MrPanda88@users.noreply.github.com> - 1.4.0-1
 - First package: g13d 1.4.0
