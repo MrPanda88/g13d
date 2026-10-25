@@ -35,6 +35,8 @@ install:
 	install -Dm644 g13d/data/org.g13d.Gui.desktop $(HOME)/.local/share/applications/org.g13d.Gui.desktop
 	sed -i 's|^Exec=.*|Exec=$(HOME)/.local/bin/g13-gui|' $(HOME)/.local/share/applications/org.g13d.Gui.desktop
 	-update-desktop-database $(HOME)/.local/share/applications 2>/dev/null
+	install -Dm644 g13d/data/icons/org.g13d.Gui.svg $(HOME)/.local/share/icons/hicolor/scalable/apps/org.g13d.Gui.svg
+	-gtk-update-icon-cache -q -t $(HOME)/.local/share/icons/hicolor 2>/dev/null
 	systemctl --user daemon-reload
 
 install-extension:
@@ -50,6 +52,7 @@ enable:
 uninstall:
 	-systemctl --user disable --now g13d.service
 	rm -f $(UNIT_DIR)/g13d.service $(HOME)/.local/share/applications/org.g13d.Gui.desktop
+	rm -f $(HOME)/.local/share/icons/hicolor/scalable/apps/org.g13d.Gui.svg
 	-gnome-extensions disable $(EXT_UUID) 2>/dev/null
 	rm -rf $(EXT_DIR)
 	systemctl --user daemon-reload

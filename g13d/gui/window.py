@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from importlib.resources import files
 
 import gi
 
@@ -35,6 +36,7 @@ from .lcd_page import LcdPage  # noqa: E402
 from .library_panel import LibraryPanel  # noqa: E402
 from .macros_page import MacroEditor, MacrosPage, confirm_delete_macro, unique_macro_name  # noqa: E402
 from .profiles_ui import ProfilesBar, ProfilesSidebar  # noqa: E402
+from .profiles_ui import APP_ICON  # noqa: E402
 from .stick_page import StickPage  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -117,6 +119,8 @@ class MainWindow(Adw.ApplicationWindow):
         provider.load_from_string(CSS)
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        # the app icon ships in the package: found without an installed icon theme (editable install, no make install)
+        Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(str(files("g13d") / "data" / "icons"))
         self._toasts = Adw.ToastOverlay()
         self.set_content(self._toasts)
         self._build()
@@ -918,9 +922,11 @@ class MainWindow(Adw.ApplicationWindow):
             dev = "G13 connected" if c.device_connected else "G13 not detected"
             auto = f" (for {c.focused_app})" if c.auto_switched and c.focused_app else (" (automatic)" if c.auto_switched else "")
             lock = " · locked" if c.locked_profile == c.profile else ""
-            self._status.set_label(f"{dev} · active: {c.profile}{auto}{lock} M{c.mode}" + (" · recording" if c.recording else ""))
+            sep = self._profiles_ui.status_separator
+            self._status.set_label(f"{dev}{sep}{c.profile}{auto}{lock} M{c.mode}" + (" · recording" if c.recording else ""))
         else:
             self._status.set_label("daemon not running")
+        self._profiles_ui.set_connected(c.available and c.device_connected)
         self._profiles_ui.set_active(c.profile, c.locked_profile)
         if c.available and c.profile and c.profile != self._seen_daemon_profile:
             self._seen_daemon_profile = c.profile
@@ -944,7 +950,7 @@ class MainWindow(Adw.ApplicationWindow):
 
 
 def about_dialog(parent: Gtk.Window) -> None:
-    Adw.AboutDialog(application_name="G13 Configuration", application_icon="input-keyboard", version=__version__,
+    Adw.AboutDialog(application_name="G13 Configuration", application_icon=APP_ICON, version=__version__,
                     developer_name="g13d contributors", license_type=Gtk.License.MIT_X11,
                     website="https://github.com/MrPanda88/g13d",
                     comments="Native Linux support for the Logitech G13 gameboard.").present(parent)

@@ -2,7 +2,7 @@
 them all in a grid (ProfilesGrid).
 
 Both expose the same interface so the window does not care which one is shown:
-  rebuild(profiles, default, active, selected) · select(name) · set_active(name) · status (a Gtk.Label)
+  rebuild(profiles, default, active, selected) · select(name) · set_active(name) · status (a Gtk.Label) · set_connected(bool)
 and call back on_select(name) when the user picks a profile and on_command(cmd, name) for
 new / duplicate / rename / delete / default / icon / icon-clear.
 """
@@ -26,6 +26,7 @@ from .dnd import autoscroll_on_drag, make_reorderable, wheel_scrolls_horizontall
 OnSelect = Callable[[str], None]
 OnCommand = Callable[[str, str], None]
 
+APP_ICON = "org.g13d.Gui"        # g13d/data/icons/org.g13d.Gui.svg, also the desktop entry's Icon
 _COMMANDS = (("list-add-symbolic", "New profile", "new"), ("edit-copy-symbolic", "Duplicate", "duplicate"),
              ("document-edit-symbolic", "Edit profile…", "menu"), ("user-trash-symbolic", "Delete", "delete"))
 
@@ -121,6 +122,17 @@ def profile_icon(profile: Profile | None, size: int) -> Gtk.Widget:
     return img
 
 
+def _status_logo(size: int) -> Gtk.Image:
+    return Gtk.Image(icon_name=APP_ICON, pixel_size=size, valign=Gtk.Align.CENTER, css_classes=["g13-logo", "g13-offline"])
+
+
+def _show_connected(logo: Gtk.Image, connected: bool) -> None:
+    if connected:
+        logo.remove_css_class("g13-offline")
+    else:
+        logo.add_css_class("g13-offline")
+
+
 class ProfilesSidebar(Gtk.Box):
     def __init__(self, on_select: OnSelect, on_command: OnCommand):
         super().__init__()
@@ -152,8 +164,18 @@ class ProfilesSidebar(Gtk.Box):
                 b.connect("clicked", lambda _b, c=cmd: self._on_command(c, self._selected))
             bar.append(b)
         view.add_bottom_bar(bar)
-        self.status = Gtk.Label(css_classes=["caption", "dim-label"], margin_bottom=6, wrap=True)
-        view.add_bottom_bar(self.status)
+        # the app logo (greyed while no G13 is connected) left of the status
+        self.status = Gtk.Label(css_classes=["caption", "dim-label"], wrap=True, xalign=0, hexpand=True)
+        self._logo = _status_logo(28)
+        foot = Gtk.Box(spacing=8, margin_start=8, margin_end=8, margin_bottom=6)
+        foot.append(self._logo)
+        foot.append(self.status)
+        view.add_bottom_bar(foot)
+
+    status_separator = " · "     # between the device and the profile in the status line
+
+    def set_connected(self, connected: bool) -> None:
+        _show_connected(self._logo, connected)
 
     def _moved(self, src: int, dest: int) -> None:
         self._on_command(f"move:{src}:{dest}", "")
@@ -363,14 +385,24 @@ class ProfilesBar(Gtk.Box):
         buttons.append(grid)
         self.append(buttons)
         self.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
-        self.status = Gtk.Label(css_classes=["caption", "dim-label"], wrap=True, justify=Gtk.Justification.RIGHT,
-                                max_width_chars=48, width_chars=22, xalign=1, valign=Gtk.Align.CENTER)
-        self.append(self.status)
+        # the app logo (greyed while no G13 is connected) over the status, one line each for the device and the profile
+        self._logo = _status_logo(40)
+        self.status = Gtk.Label(css_classes=["caption", "dim-label"], xalign=0, ellipsize=Pango.EllipsizeMode.END,
+                                max_width_chars=40)
+        corner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, valign=Gtk.Align.CENTER, margin_start=4)
+        corner.append(self._logo)
+        corner.append(self.status)
+        self.append(corner)
 
         # parented to the bar, not the strip: the strip's children are replaced on every rebuild
         self._menu = _ContextMenu(self, on_select, on_command)
         self._menu.horizontal = True
         self._tiles = _TileSet(self._strip, self._menu, on_select, on_command, 44)
+
+    status_separator = "\n"
+
+    def set_connected(self, connected: bool) -> None:
+        _show_connected(self._logo, connected)
 
     def open_grid(self) -> None:
         if self._grid is None:

@@ -68,6 +68,7 @@ install -Dpm 0644 g13d/data/g13d.service %{buildroot}%{_userunitdir}/g13d.servic
 sed -i 's|^ExecStart=.*|ExecStart=%{_bindir}/g13d|' %{buildroot}%{_userunitdir}/g13d.service
 install -Dpm 0644 g13d/data/org.g13d.Gui.desktop %{buildroot}%{_datadir}/applications/org.g13d.Gui.desktop
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.g13d.Gui.desktop
+install -Dpm 0644 g13d/data/icons/org.g13d.Gui.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.g13d.Gui.svg
 mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
 cp -a g13d/data/gnome-shell/g13d@g13d.org %{buildroot}%{_datadir}/gnome-shell/extensions/
 
@@ -94,6 +95,7 @@ cp -a g13d/data/gnome-shell/g13d@g13d.org %{buildroot}%{_datadir}/gnome-shell/ex
 %{_udevrulesdir}/70-g13d.rules
 %{_userunitdir}/g13d.service
 %{_datadir}/applications/org.g13d.Gui.desktop
+%{_datadir}/icons/hicolor/scalable/apps/org.g13d.Gui.svg
 
 %files -n gnome-shell-extension-g13d
 %{_datadir}/gnome-shell/extensions/g13d@g13d.org/
